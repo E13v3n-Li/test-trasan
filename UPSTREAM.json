@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/HKU-TASR/Sanitizer.git",
+  "branch": "main",
+  "commit": "f78dee006e30bd471dd4877588ba435ebd6a85b5",
+  "extension_date": "2026-10-31",
+  "scope": "CIFAR-10 / original ResNet18; final-distribution harmless recipient tracing",
+  "upstream_license": "MIT",
+  "remote_repository_modified": false
+}

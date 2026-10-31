@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+trace_runs/
+server_export/
+trace_private/
+data/
+model/
+checkpoint/
+records*/
+pytest-of-root/
+tmp*/

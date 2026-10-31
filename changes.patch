@@ -1,0 +1,2323 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..a6b528b
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,13 @@
++__pycache__/
++*.pyc
++.pytest_cache/
++.venv/
++trace_runs/
++server_export/
++trace_private/
++data/
++model/
++checkpoint/
++records*/
++pytest-of-root/
++tmp*/
+diff --git a/README.md b/README.md
+index 3162ddf..5b7526c 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,11 @@
+ # Harmless Backdoor-based Client-side Watermarking in Federated Learning
+ 
++> **Research extension (2026-10-31): harmless black-box recipient tracing.**
++> This package modifies upstream commit `f78dee006e30bd471dd4877588ba435ebd6a85b5`.
++> Read [TRACEABILITY_ZH.md](TRACEABILITY_ZH.md) for the Chinese setup, original-training export,
++> independent fingerprint copies, calibration, label-only API tracing and evaluation commands.
++> See [TEST_REPORT.md](TEST_REPORT.md) for what was actually tested. No full CIFAR-10 research result is claimed.
++
+ ![](assets/Repo_Sanitizer_1.png)
+ 
+ **Abstract**: Protecting intellectual property (IP) in federated learning (FL) is increasingly important as clients contribute proprietary data to collaboratively train models. Model watermarking, particularly through backdoor-based methods, has emerged as a popular approach for verifying ownership and contributions in deep neural networks trained via FL. By manipulating their datasets, clients can embed a secret pattern, resulting in non-intuitive predictions that serve as proof of participation, useful for claiming incentives or IP co-ownership. However, this technique faces practical challenges: client watermarks can collide, leading to ambiguous ownership claims, and malicious clients may exploit watermarks to inject harmful backdoors, jeopardizing model integrity. To address these issues, we propose Sanitizer, a server-side method that ensures client-embedded backdoors cannot be triggered on natural queries in harmful ways. It identifies subnets within client-submitted models, extracts backdoors throughout the FL process, and confines them to harmless, client-specific input subspaces. This approach not only enhances Sanitizer's efficiency but also resolves conflicts when clients use similar triggers with different target labels. This repository contains the source code of this project.
+diff --git a/TEST_REPORT.md b/TEST_REPORT.md
+new file mode 100644
+index 0000000..01f9b78
+--- /dev/null
++++ b/TEST_REPORT.md
+@@ -0,0 +1,53 @@
++# 实际验证记录
++
++日期：2026-10-31。上游提交：`f78dee006e30bd471dd4877588ba435ebd6a85b5`。
++
++## 环境
++
++- Python 3.12.14
++- torch 2.5.1+cpu / torchvision 0.20.1+cpu
++- NumPy 1.26.4 / Pillow 10.3.0
++- pytest 8.3.5
++- CPU，未使用 CUDA；未下载 CIFAR-10，未运行完整联邦训练。
++
++## 已完成
++
++1. `python -m pytest -q`：**14 passed**。覆盖：
++   - 默认 10 人 / 64 位码本的最小距离，确定性查询和 train/calibration/test 分离；
++   - 随机秘密与禁止覆盖既有密钥；
++   - PNG 编解码后查询像素一致；
++   - 同分拒绝、低得分拒绝、无关类别计为不匹配、标签类型/数量校验；
++   - 校准必须提供全部身份与未知模型；
++   - 数据角色限制、上游纯 state_dict 权重兼容；
++   - 一步展开鲁棒损失的梯度与原模型不被修改；
++   - HTTP 仅标签合约；
++   - 同时训练两份副本与单独训练第二份得到相同结果，模型包无秘密码本；
++   - 防御/验证样本重叠被拒绝；
++   - 按样本数聚合与整数 BN 计数；
++   - 被剪枝通道的 BatchNorm 输出置零；
++   - 原无害重学习支持 2 个客户端和不足整批的数据；
++   - 使用替身本地训练器检查所有客户端每轮共同起点、剪枝后聚合、防御数据排除。
++2. `main_fed.py --help` 和新 CLI 入口成功加载；Python 编译检查通过。
++3. 使用**原始 ResNet18 架构**和随机测试张量，实际执行新增一步展开鲁棒损失及 backward；
++   loss 和所有参数梯度均有限。此项不是模型效果实验。
++4. `examples/smoke_trace.py` 实际完成小模型合成数据训练、2 份独立副本、阈值校准、
++   test 查询归属、配对安全指标，以及微调/剪枝/权重舍入输出。
++   该流程测试中 2 份已知副本正确识别、2 个随机未知模型被拒绝；
++   **样本极少、数据合成、性能约束被放宽，不可作为准确率、无害性或低误报的研究结果。**
++5. 用演示 HTTP 服务器加载真实的合成实验模型，CLI 通过 PNG POST 取得标签；
++   输出与本地同模型解码完全一致，身份均为 0。服务端没有加载密钥。
++6. `git diff --check` 通过；依赖检查无依赖冲突。
++
++测试出现的 matplotlib/pyparsing 弃用警告和宿主 CPU 信息探测警告不影响断言。
++
++## 尚未完成 / 不作承诺
++
++- 没有运行原论文 200 轮 CIFAR-10 联邦训练，也没有原论文数字复现结果。
++- 没有训练 10 份正式 CIFAR-10 身份副本，未进行真实独立负模型池校准。
++- 没有证实自然输入安全性、原贡献保持、修改后追踪率或 E 优于 D。
++- 没有运行 CUDA / 多 GPU / 大规模客户端实验。
++- 未复现 TraMark，未实现抗合谋、抗蒸馏或查询过滤突破。
++- 原仓库其他数据集/架构的完整训练路径未作全面验证；本扩展限定 CIFAR-10 原 ResNet18。
++
++附带的两个原始预训练权重保持上游内容，不是本次新训练得到的无害可追踪模型。
++本代码包没有附带生产密钥或新的已训练身份副本。
+diff --git a/TRACEABILITY_ZH.md b/TRACEABILITY_ZH.md
+new file mode 100644
+index 0000000..572573f
+--- /dev/null
++++ b/TRACEABILITY_ZH.md
+@@ -0,0 +1,316 @@
++# Sanitizer 无害黑盒可追踪水印：代码说明
++
++本包基于 HKU-TASR/Sanitizer 的真实源代码修改，基准提交见 `UPSTREAM.json`。
++保留原目录、MIT 许可证和原仓库的两个预训练权重；没有向作者的 GitHub 仓库推送修改。
++
++这是可运行的研究实现，不是已完成的研究结论。第一版正式接入的是 **CIFAR-10 + 原仓库 ResNet18**。
++不包含图联邦改造，不宣称已复现论文数字，也不宣称人工图像天然安全。
++
++## 1. 实现范围与基线
++
++| 组件 | 实现状态 |
++| --- | --- |
++| 原 Sanitizer 训练与净化 | 保留，并修复下述影响训练/导出的实现问题 |
++| D：直接无害追踪基线 | 独立副本、距离受限码本、人工查询、正常任务与自然输入安全损失 |
++| E：候选鲁棒改进 | 可选的一步干净 SGD 展开后的指纹保持损失；包含二阶梯度，默认关闭 |
++| 黑盒解码 | 本地模型标签、HTTP 标签接口、离线标签 JSON 三种入口 |
++| 阈值校准 | 得分 + 第一/第二名间隔；需要全部注册身份和未知模型；允许拒绝判断 |
++| 测试 | 匹配矩阵 CSV/JSON、正确/错误/拒绝归属、配对安全指标、可选贡献验证 |
++| 修改测试 | 干净数据微调、全局 L1 非结构剪枝、模拟 int8 权重舍入 |
++| 未实现 | TraMark 复现、蒸馏/合谋保证、生产级 API 服务、真正后端 int8 部署量化 |
++
++`--robust-weight 0` 是 D；例如 `--robust-weight 0.2` 是 E 的候选设置。
++`--safety-weight 0` 可作安全约束消融 C。原贡献保留通过 `--contribution-weight` 控制，默认关闭。
++代码没有把“无害化损失”直接等同于无害证明，也没有把 E 的存在当作创新已经成立。
++
++所有副本均从同一个净化模型独立初始化；新增指纹不参与后续联邦聚合。
++因此只能追踪最终分发副本，不能追踪此前保存的公共中间版本。
++
++## 2. 环境
++
++原 `requirements.txt` 的 torch 2.4.0 / torchvision 0.18.0 不匹配，现改为 2.4.0 / 0.19.0，
++并补齐原程序用到的 torchsummary、thop、einops。原图形工具改为 Agg，避免无桌面服务器导入失败。
++`adv_samples` 才需要的 cleverhans 改为延迟导入；若运行原仓库该特殊实验，请另外安装 cleverhans。
++
++建议新建环境。复用已有匹配的 PyTorch 环境时，不要盲目覆盖其 CUDA 包。
++
++```bash
++conda create -n sanitizer-trace python=3.10 -y
++conda activate sanitizer-trace
++pip install -r requirements.txt
++pip install 'pytest>=8,<9'
++```
++
++仅运行追踪扩展，可先按机器选择匹配的 torch/torchvision，再执行：
++
++```bash
++pip install -r requirements-trace.txt
++python trace_cli.py --help
++```
++
++本次实际验证环境：Python 3.12、torch 2.5.1+cpu、torchvision 0.20.1+cpu、NumPy 1.26.4。
++这证明所列代码检查的兼容性，不表示不同环境会复现完全相同的实验数值。
++CUDA 实验使用 `--device cuda:0`；默认 CPU。较大的 E 训练会显著增加显存和时间。
++
++## 3. 最快检查代码能否运行
++
++在仓库根目录运行：
++
++```bash
++python -m pytest -q
++python examples/smoke_trace.py --output-dir trace_runs/synthetic_smoke
++```
++
++第二条完全不下载数据，使用极小网络、合成输入和放宽的性能约束。
++它实际训练指纹并走完校准、测试、配对指标及三种模型修改，只用于检查接口连通。
++其中未知模型为随机模型，**不能**用于宣称研究中的低误报率。
++输出 `SMOKE_ONLY.json` 明确标记了这一点。已存在的输出目录不会被覆盖。
++
++## 4. 从原 Sanitizer 得到基础模型与服务器材料
++
++先完成原流程，再嵌入身份指纹。例如以下参数保留原 README 的 CIFAR10 实验结构：
++
++```bash
++python main_fed.py \
++  --gpu 0 --dataset cifar --num_channels 3 --model cnn --iid --conflict 0 \
++  --num_users 10 --num_classes 10 --all_clients \
++  --epochs 200 --local_ep 10 --local_bs 64 --lr 0.01 --momentum 0.9 \
++  --poisoning_rate 0.1 --implant_way cifar-pixel --wm_method white_block \
++  --epochs_ul 20 --bs_ul 32 --lr_ul 0.01 --defense_data_ratio 0.05 \
++  --topK_ratio 0.4 --clean_threshold 0.15 \
++  --reverse_eps 2 --bs_re 128 --lr_re 0.01 --lambda_weight 0.01 --full_re 1 \
++  --relearn_eps 50 --relearn_bs 32 --relearn_lr 0.005 \
++  --seed 1 --trace_export_dir server_export/run1
++```
++
++这是耗时的真实训练，本代码包不附带已经完成此实验的新权重。
++`--num_users` 改为大于 10 时，还要通过原参数提供覆盖所有客户端的三个字典，不能只改人数。
++
++完成无害重学习之后，`server_export/run1/` 包含：
++
++| 文件 | 用途 |
++| --- | --- |
++| `sanitized_base.pt` | 最终净化基础模型，CIFAR-10 原 ResNet18 |
++| `defense.pt` | 原服务器防御数据，用于指纹嵌入 |
++| `validation.pt` | 额外保留的训练集样本，用于指纹阶段模型选择 |
++| `contribution_train.pt` / `contribution_test.pt` | 原贡献水印的固定规范查询，可选回放/验证 |
++| `original_triggers.pt` | 服务器恢复出的旧触发器、掩码和目标，用于检查旧触发行为是否复活 |
++
++防御数据和额外验证数据的索引都从所有客户端训练划分中排除；额外验证数据不用于原 Sanitizer 梯度训练。
++贡献验证使用原机制的固定背景，两份贡献文件有意保存相同的规范查询，不声称它们是独立留出样本。
++`original_triggers.pt` 是**恢复出的**触发器；若需测量客户端真正原始图案，还应使用原仓库的对应测试函数。
++这整个目录都应由服务器保管。
++
++原仓库附带的 `Pretrained_Backdoored_...pt` 与 `Pretrained_unlearned_...pt` 用于子网示例，
++**不是本方案已经净化完成、可以直接用于论文实验的最终 M0**；扩展不会自动加载它们。
++
++如果已有可信的最终净化 `.pth`（原 `utils.util.save_model` 的纯 state_dict），可直接作为 `--base`。
++此时须自行提供训练前已保留且不重叠的服务器数据，不能事后把已用于客户端训练的数据称作独立防御集。
++
++## 5. 生成秘密码本和身份副本
++
++```bash
++python trace_cli.py keys --output trace_private/key.pt \
++  --recipients 10 --bits 64 --distance 20
++
++python trace_cli.py embed \
++  --key trace_private/key.pt --base server_export/run1/sanitized_base.pt \
++  --defense-data server_export/run1/defense.pt \
++  --validation-data server_export/run1/validation.pt \
++  --output-dir trace_runs/D --device cuda:0 \
++  --epochs 10 --lr 0.001 --batch-size 64 \
++  --task-weight 1 --fingerprint-weight 1 --safety-weight 1 --robust-weight 0
++```
++
++这些超参数是起点，尚未经过 CIFAR-10 调优。若验证集上没有满足默认 2 个百分点准确率下降约束的模型，
++程序明确报错，不会静默保存一个不达标的“最终”副本。放宽约束前应检查并记录原因。
++准确率约束仅参与模型选择，安全性需要后面的独立测试，程序没有宣称自动通过安全认证。
++
++E 组使用相同基础模型、码本和数据，改成新输出目录及 `--robust-weight 0.2 --robust-every 5 --inner-lr 0.001`。
++它模拟一步干净 SGD 后的指纹损失，**不**模拟剪枝，也不代表任意多步微调的保证。
++
++保留原贡献验证可额外加：
++
++```bash
++--contribution-data server_export/run1/contribution_train.pt --contribution-weight 1
++```
++
++若需研究复现，可给 `keys` 指定 `--seed 123`；这不是部署用的不可预测秘密。
++不指定 seed 时使用系统随机秘密。固定密钥跨实验复用便于公平比较，但不要将其公开给接收者。
++
++输出分成：
++
++- `trace_runs/D/distribution/copy_000/model.pt` 等：交付副本，只含架构名与权重。
++- `trace_runs/D/server_private/registry.json`：服务器持有的身份对应、模型 SHA256、训练参数和时间。
++- `trace_runs/D/server_private/manifest.json`：用于构造评估清单的模板。
++- `trace_runs/D/server_private/*_training.json`：逐轮损失、干净准确率、指纹匹配率。
++
++交付时仅复制对应机构的 `model.pt` 及所需架构代码。
++**不要下发 key、server_private、server_export 或导出的秘密 PNG。** 模型无需这些文件也能正常分类。
++
++## 6. 未知模型与阈值校准
++
++不能让解码器始终返回最相似身份。阈值需要真正的未知控制模型。
++当前代码会拒绝缺少未知模型、缺少某个注册身份、重复 checkpoint 字节的校准清单。
++
++可在公开 CIFAR-10 上独立训练无水印控制，用不同 seed 分别形成校准池和最终测试池：
++
++```bash
++python examples/train_clean_control.py --seed 101 --output controls/cal_101.pt --device cuda:0 --download
++python examples/train_clean_control.py --seed 102 --output controls/cal_102.pt --device cuda:0
++python examples/train_clean_control.py --seed 201 --output controls/test_201.pt --device cuda:0
++python examples/train_clean_control.py --seed 202 --output controls/test_202.pt --device cuda:0
++```
++
++此脚本用于公开数据的离线研究对照，不意味着真实 FL 服务器可以集中读取机构私有数据。
++训练脚本使用训练集内部留出集选择模型，不使用官方 test 集。应报告控制模型的正常性能，不能只用未训练模型。
++四个模型只是使用示例，远不足以证明很低的误报率。可再加入其他合法来源和架构的控制；
++本版模型加载器只支持原 ResNet18，其他架构需自行增加适配，HTTP 解码本身不依赖架构。
++
++在仓库根目录创建 `calibration.json`，列出全部 10 份副本、基础模型和校准未知模型：
++
++```python
++import json
++records = [dict(name=f'copy_{i}', path=f'trace_runs/D/distribution/copy_{i:03d}/model.pt', recipient=i)
++           for i in range(10)]
++records += [dict(name='base', path='server_export/run1/sanitized_base.pt', recipient=None),
++            dict(name='unknown_101', path='controls/cal_101.pt', recipient=None),
++            dict(name='unknown_102', path='controls/cal_102.pt', recipient=None)]
++with open('calibration.json', 'w') as f:
++    json.dump({'records': records}, f, indent=2)
++```
++
++清单路径相对于清单文件所在目录；`recipient: null` 表示未注册来源，整数表示真实身份。
++
++```bash
++python trace_cli.py calibrate --key trace_private/key.pt --manifest calibration.json \
++  --output trace_private/thresholds_D.json --device cuda:0 \
++  --variants 4 --max-false-rate 0.01 --min-recall 0.8
++```
++
++程序同时约束“未知模型被归到任何身份”和“已知副本被归错身份”的经验比例，
++在候选得分/间隔边界上选择满足约束、正确归属最多的组合。达不到要求就报错，不伪造阈值。
++校准只使用 calibration 查询。最终 test 查询的背景噪声和变体独立生成。
++查询变体相互相关，不能把 256 个查询当作 256 个独立未知模型。
++本版默认 64 位 × 4 变体 = 256 次预测，用同一批响应比较全部接收者。
++
++## 7. 对疑似模型进行黑盒追踪
++
++拿到模型文件时：
++
++```bash
++python trace_cli.py trace --key trace_private/key.pt --thresholds trace_private/thresholds_D.json \
++  --checkpoint suspect.pt --output trace_private/suspect_result.json --device cuda:0
++```
++
++只有 API 时：
++
++```bash
++python trace_cli.py trace --key trace_private/key.pt --thresholds trace_private/thresholds_D.json \
++  --endpoint https://YOUR-SERVICE/predict --output trace_private/suspect_result.json
++```
++
++示例 HTTP 合约：POST JSON `{"images": ["base64编码的PNG", ...]}`；响应 `{"labels": [3, 1, ...]}`。
++每张图必须返回一个 0..9 的整数标签，采用 torchvision CIFAR-10 原顺序：
++airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck。
++服务端需按原归一化处理 32×32 RGB 图像，不应再次改变类别映射。PNG 像素与本地查询经过一致量化。
++不同服务需要改适配函数，不能直接把任意商业 API 当作此合约。若需认证，用 `--token-env VARIABLE_NAME`，
++程序从环境变量读取 bearer token，不写入结果。
++
++本地可使用这个只需模型文件的演示服务：
++
++```bash
++python examples/serve_label_api.py --checkpoint trace_runs/D/distribution/copy_000/model.pt --port 8765
++# 另开终端，将上面的 --endpoint 改为 http://127.0.0.1:8765/predict
++```
++
++演示服务仅监听回环地址，不是生产服务。它不加载任何服务器秘密密钥。
++
++也支持离线调用其他接口：
++
++```bash
++python trace_cli.py export-queries --key trace_private/key.pt --output-dir trace_private/probes
++```
++
++按 `request_manifest.json` 的文件顺序查询，保存 JSON：
++`{"key_id":"从清单复制", "query_sha256":"从清单复制", "labels":[...]}`，
++再用 `trace --responses returned_labels.json` 替代 `--endpoint`。
++
++输出 `attributed` 或 `unattributable`，以及得分、间隔和身份（若可归属）。
++只证明副本来源关联；不直接证明某人主动泄露。该程序不主动寻找外流服务，也不能绕过输入过滤。
++
++## 8. 正式评估和修改实验
++
++导出官方 test 集（与指纹嵌入数据分开）：
++
++```bash
++python trace_cli.py prepare-data --role test --data-root data/cifar --output trace_private/test.pt --download
++```
++
++创建 `evaluation.json`，保留已知副本，未知项改成 `controls/test_201.pt`、`controls/test_202.pt`。
++**不要再次放入参与校准的 base 或未知 checkpoint。** 程序会按 SHA256 拒绝重复未知模型；
++同一已知副本可分别使用 calibration/test 查询，但最终还应增加独立训练种子与密钥重复实验。
++
++```bash
++python trace_cli.py evaluate --key trace_private/key.pt --thresholds trace_private/thresholds_D.json \
++  --manifest evaluation.json --output trace_runs/D/evaluation.json --device cuda:0 \
++  --test-data trace_private/test.pt --base server_export/run1/sanitized_base.pt \
++  --contribution-data server_export/run1/contribution_test.pt \
++  --original-triggers server_export/run1/original_triggers.pt
++```
++
++会同时输出 `.json` 和匹配矩阵 `.csv`。完整安全评估要测试所有位点、三个位置变换和全部测试图像，
++成本较高；调试可用 `--max-samples 128`，正式报告必须披露实际样本数。
++目标 ASR 排除真实标签已经等于目标类的样本；同时报告 M0 在相同图案上的 ASR、最坏增量、正常准确率。
++仅通过 `--manifest` 不加 test-data 时，只评估追踪，不评估无害性。
++
++修改副本：
++
++```bash
++python trace_cli.py attack --checkpoint trace_runs/D/distribution/copy_000/model.pt \
++  --method prune --amount 0.2 --output modified/prune20_000.pt
++
++python trace_cli.py attack --checkpoint trace_runs/D/distribution/copy_000/model.pt \
++  --method weight-round --output modified/round8_000.pt
++```
++
++`weight-round` 是每个参数张量的对称 int8 网格舍入后回存浮点，不是实际部署的 int8 后端量化。
++微调数据必须来自独立攻击数据（`role=attack`），不能拿最终测试集来微调：
++
++```bash
++python trace_cli.py prepare-data --role attack --indices attack_indices.json \
++  --data-root data/cifar --output trace_private/attack.pt
++python trace_cli.py attack --checkpoint trace_runs/D/distribution/copy_000/model.pt \
++  --method finetune --attack-data trace_private/attack.pt --epochs 5 --lr 0.001 \
++  --output modified/ft_000.pt --device cuda:0
++```
++
++`attack_indices.json` 是 CIFAR train 整数索引列表，须与服务器防御、验证数据分开；
++真实威胁实验可用泄露者自己的合法数据。代码不自动假设攻击者拥有服务器秘密查询。
++修改之后更新评估清单中的路径、保留真实 recipient，使用**固定的原阈值**重新 evaluate，不能用最终攻击测试调阈值。
++每种方法都报告正确归属、错误归属、拒绝归属、主任务性能和安全性，不能只报最优匹配得分。
++
++## 9. 原仓库修复与实验可比性
++
++这些修复使运行流程更接近论文描述，但可能改变原仓库输出；比较 D/E 时必须使用同一个修复版 M0。
++若需原始代码复现，使用 `UPSTREAM.json` 指定提交另建对照，不要把修复版结果称作原作者公布数字。
++
++1. `main_fed.py`：原循环会让后一个客户端接着前一个客户端的本地状态训练；现每轮固定共同起点。
++2. 原脚本导入了剪枝函数但聚合的是未剪枝 `w`；现聚合剪枝后的完整模型参数。
++3. 对被剪枝卷积通道，同时将对应 BatchNorm 的 affine 输出置零，避免零卷积仍产生常数输出。
++4. 防御数据原来从客户端已划分的数据中再次抽样；现从所有客户端索引中排除，并额外保留指纹验证集。
++5. `FedAvg` 增加样本数加权，整数 BN 计数保持整数；默认调用仍可使用等权。
++6. `final_unharmful_retrain` 去掉硬编码 20 人和 2500 张，使用真实人数/数据长度/配置批量；修正剪裁梯度时机。
++7. 重学习轮数和批量参数改为整数；颜色生成保留前 10 个原背景并支持更多索引。
++8. 修复无桌面导入、缺失依赖、torch/torchvision 配对、少于 3 人的末尾测试及 save 目录创建。
++9. 新增最终导出接口和随机种子初始化。训练中间模型的保护仍不在本扩展范围内。
++
++代码目录：`traceability/` 实现协议，`trace_cli.py` 提供入口，`examples/` 提供演示和控制模型训练，
++`tests/traceability/` 提供回归测试。`changes.patch` 记录相对指定上游提交的源码修改。
++
++## 10. 下一步实验建议
++
++先跑通 M0 与 D，再画副本×身份矩阵；随后用固定阈值测试微调和剪枝。
++只有发现稳定失败，再比较 E 的收益。统一数据划分、密钥、查询数和主任务质量约束，并报告额外计算成本。
++至少使用多个训练种子/密钥与更多独立未知模型。低误报需要足够样本，而不是少量模型上零误判。
++TraMark 是应另行复现的外部黑盒追踪基线，本包没有伪装成已实现该方法。
+diff --git a/UPSTREAM.json b/UPSTREAM.json
+new file mode 100644
+index 0000000..ae4e754
+--- /dev/null
++++ b/UPSTREAM.json
+@@ -0,0 +1,9 @@
++{
++  "repository": "https://github.com/HKU-TASR/Sanitizer.git",
++  "branch": "main",
++  "commit": "f78dee006e30bd471dd4877588ba435ebd6a85b5",
++  "extension_date": "2026-10-31",
++  "scope": "CIFAR-10 / original ResNet18; final-distribution harmless recipient tracing",
++  "upstream_license": "MIT",
++  "remote_repository_modified": false
++}
+diff --git a/architectures/nets_ResNet18.py b/architectures/nets_ResNet18.py
+index b6c1400..c7d1044 100644
+--- a/architectures/nets_ResNet18.py
++++ b/architectures/nets_ResNet18.py
+@@ -7,8 +7,6 @@ Reference:
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+-from torchsummary import summary
+-from thop import profile, clever_format
+ 
+ class BasicBlock(nn.Module):
+     expansion = 1
+@@ -123,6 +121,7 @@ def ResNet152():
+     return ResNet(Bottleneck, [3, 8, 36, 3])
+ 
+ def print_summary(input_shape, model):
++    from thop import profile, clever_format
+     # 计算 MACs 和参数量
+     macs, params = profile(model, inputs=(input_shape,))
+ 
+@@ -138,6 +137,7 @@ def print_summary(input_shape, model):
+ 
+ 
+ if __name__ == '__main__':
++    from torchsummary import summary
+     # For Tiny Imagenet
+     img = torch.randn(1, 3, 64, 64)
+     net = ResNet18TinyImagenet()
+@@ -146,4 +146,4 @@ if __name__ == '__main__':
+ 
+     # print(net)
+     # for name, param in net.named_parameters():
+-    #     print(f"Name: {name}, Shape: {param.shape}")
+\ No newline at end of file
++    #     print(f"Name: {name}, Shape: {param.shape}")
+diff --git a/average/Fed.py b/average/Fed.py
+index af146f9..5e225ec 100644
+--- a/average/Fed.py
++++ b/average/Fed.py
+@@ -7,10 +7,19 @@ import torch
+ from torch import nn
+ 
+ 
+-def FedAvg(w):
++def FedAvg(w, weights=None):
++    if not w:
++        raise ValueError('Cannot aggregate an empty model list')
++    if weights is None:
++        weights = [1.] * len(w)
++    if len(weights) != len(w) or any(x < 0 for x in weights) or sum(weights) <= 0:
++        raise ValueError('Invalid aggregation weights')
++    weights = [x / sum(weights) for x in weights]
+     w_avg = copy.deepcopy(w[0])
+     for k in w_avg.keys():
+-        for i in range(1, len(w)):
+-            w_avg[k] += w[i][k]
+-        w_avg[k] = torch.div(w_avg[k], len(w))
++        if w_avg[k].is_floating_point():
++            w_avg[k] = sum(state[k] * weight for state, weight in zip(w, weights))
++        else:
++            # Integer counters (e.g. BN num_batches_tracked) must retain their dtype.
++            w_avg[k] = torch.stack([state[k] for state in w]).max(dim=0).values
+     return w_avg
+diff --git a/core/resnet_cifar/unlearning_extraction_function.py b/core/resnet_cifar/unlearning_extraction_function.py
+index a480382..ee9ee36 100644
+--- a/core/resnet_cifar/unlearning_extraction_function.py
++++ b/core/resnet_cifar/unlearning_extraction_function.py
+@@ -423,8 +423,22 @@ class PrunedResNet(nn.Module):
+ 
+                 # Apply the mask
+                 param.data.mul_(mask)  # Zero out the specified channels
+-                param.requires_grad = False  # Freeze these channels
++                # Zero the corresponding BN affine output too; otherwise a zero
++                # convolution may still emit a nonzero constant through BatchNorm.
++                module_name = name.rsplit('.', 1)[0]
++                if module_name.endswith('conv1') or module_name.endswith('conv2'):
++                    bn_name = module_name.replace('conv', 'bn')
++                elif module_name.endswith('shortcut.0'):
++                    bn_name = module_name[:-1] + '1'
++                else:
++                    bn_name = None
++                if bn_name:
++                    bn = dict(self.model.named_modules()).get(bn_name)
++                    if isinstance(bn, nn.BatchNorm2d):
++                        with torch.no_grad():
++                            bn.weight[selected_channels] = 0
++                            bn.bias[selected_channels] = 0
+ 
+ 
+ def create_pruned_model(original_model, selected_kernels=None):
+-    return PrunedResNet(original_model, selected_kernels=selected_kernels)
+\ No newline at end of file
++    return PrunedResNet(original_model, selected_kernels=selected_kernels)
+diff --git a/examples/serve_label_api.py b/examples/serve_label_api.py
+new file mode 100644
+index 0000000..8aeb71d
+--- /dev/null
++++ b/examples/serve_label_api.py
+@@ -0,0 +1,64 @@
++"""Local protocol example, not a production web server. Only needs a delivered model, never the key."""
++import argparse
++import base64
++import io
++import json
++from http.server import BaseHTTPRequestHandler, HTTPServer
++from pathlib import Path
++import sys
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import numpy as np
++from PIL import Image
++import torch
++from traceability.common import load_model, normalize, predict
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--checkpoint', required=True)
++    p.add_argument('--arch', choices=['resnet18', 'tiny_smoke'], default='resnet18')
++    p.add_argument('--device', default='cpu')
++    p.add_argument('--port', type=int, default=8765)
++    args = p.parse_args()
++    torch.set_num_threads(2)
++    model = load_model(args.checkpoint, args.arch, args.device)
++    class Handler(BaseHTTPRequestHandler):
++        def do_POST(self):
++            if self.path != '/predict':
++                self.send_error(404)
++                return
++            length = int(self.headers.get('Content-Length', '0'))
++            if not 0 < length <= 8*1024*1024:
++                self.send_error(413)
++                return
++            try:
++                values = json.loads(self.rfile.read(length))['images']
++                if not isinstance(values, list) or not 1 <= len(values) <= 256:
++                    raise ValueError('Batch must contain 1..256 images')
++                images = []
++                for encoded in values:
++                    image = Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
++                    if image.size != (32, 32):
++                        raise ValueError('Expected 32x32 images')
++                    images.append(normalize(torch.from_numpy(np.array(image.convert('RGB'))).permute(2, 0, 1).float()/255))
++                labels = predict(model, torch.stack(images), device=args.device)
++                body = json.dumps({'labels': labels.tolist()}).encode()
++            except (ValueError, KeyError, TypeError, OSError):
++                self.send_error(400, 'Invalid query payload')
++                return
++            self.send_response(200)
++            self.send_header('Content-Type', 'application/json')
++            self.send_header('Content-Length', str(len(body)))
++            self.end_headers()
++            self.wfile.write(body)
++    server = HTTPServer(('127.0.0.1', args.port), Handler)
++    print(f'Local label API: http://127.0.0.1:{args.port}/predict', flush=True)
++    try:
++        server.serve_forever()
++    finally:
++        server.server_close()
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/examples/smoke_trace.py b/examples/smoke_trace.py
+new file mode 100644
+index 0000000..011a297
+--- /dev/null
++++ b/examples/smoke_trace.py
+@@ -0,0 +1,61 @@
++"""Offline CPU plumbing demo on SYNTHETIC data. Not a Sanitizer/CIFAR experiment."""
++import argparse
++from pathlib import Path
++import sys
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import torch
++
++from traceability.common import (TinySmokeNet, data_bundle, load_model, normalize, save_json,
++                                save_model, save_private, seed_all)
++from traceability.keys import write_key
++from traceability.training import EmbedConfig, personalize
++from traceability.verification import score_manifest, calibrate
++from traceability.evaluation import evaluate, modify_model
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--output-dir', default='trace_runs/synthetic_smoke')
++    args = p.parse_args()
++    root = Path(args.output_dir).resolve()
++    root.mkdir(parents=True, exist_ok=False)
++    torch.set_num_threads(2)
++    seed_all(17)
++    base = TinySmokeNet().eval()
++    save_model(root/'base.pt', base, 'tiny_smoke')
++    for role, count in [('defense', 128), ('validation', 32), ('test', 12), ('attack', 32)]:
++        x = normalize(torch.rand(count, 3, 32, 32))
++        with torch.no_grad():
++            y = base(x).argmax(1)
++        save_private(root/f'{role}.pt', data_bundle(x, y, role, source=f'synthetic/{role}'))
++    key = write_key(root/'secret.pt', recipients=2, bits=8, distance=2, seed=19)
++    cfg = EmbedConfig(epochs=35, batch_size=32, lr=.02, max_accuracy_drop=1.,
++                      train_variants=8, validation_variants=4, safety_weight=1.)
++    personalize(root/'base.pt', key, root/'defense.pt', root/'validation.pt', root/'copies',
++                cfg, arch='tiny_smoke')
++    known = [dict(name=f'copy_{i}', path=f'copies/distribution/copy_{i:03d}/model.pt', recipient=i)
++             for i in range(2)]
++    unknowns = []
++    for i in range(4):
++        seed_all(100+i)
++        save_model(root/f'unknown_{i}.pt', TinySmokeNet(), 'tiny_smoke')
++        unknowns.append(dict(name=f'unknown_{i}', path=f'unknown_{i}.pt', recipient=None))
++    save_json(root/'calibration.json', dict(records=known+unknowns[:2]))
++    save_json(root/'evaluation.json', dict(records=known+unknowns[2:]))
++    calibration = score_manifest(root/'calibration.json', key, 'calibration', 4, 'tiny_smoke')
++    thresholds = calibrate(calibration, key, max_false_rate=0, min_recall=1.)
++    save_json(root/'thresholds.json', thresholds)
++    report = evaluate(root/'evaluation.json', key, root/'thresholds.json', root/'result.json',
++                      arch='tiny_smoke', test_data=root/'test.pt', base_path=root/'base.pt')
++    assert report['counts']['correct'] == 2
++    for method in ['finetune', 'prune', 'weight-round']:
++        modify_model(root/'copies/distribution/copy_000/model.pt', root/f'{method}.pt',
++                     method, arch='tiny_smoke', data_path=root/'attack.pt')
++    save_json(root/'SMOKE_ONLY.json', dict(synthetic_pipeline_only=True, counts=report['counts'],
++        warning='Random/synthetic controls are only plumbing tests. No empirical CIFAR harmlessness or robustness claim.'))
++    print(f'Synthetic pipeline completed: {root / "SMOKE_ONLY.json"}')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/examples/train_clean_control.py b/examples/train_clean_control.py
+new file mode 100644
+index 0000000..b91690d
+--- /dev/null
++++ b/examples/train_clean_control.py
+@@ -0,0 +1,72 @@
++"""Train an independent, unwatermarked CIFAR-10 control for OFFLINE research evaluation.
++
++Uses the public CIFAR-10 training set; not an assertion that an FL server can access private data.
++Use distinct seeds for calibration and final unknown controls. Report their clean accuracy.
++"""
++import argparse
++from pathlib import Path
++import sys
++import time
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import torch
++from torch.utils.data import DataLoader, Subset
++from torchvision import datasets, transforms
++from traceability.common import MEAN, STD, build_model, save_model, save_json, seed_all
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--data-root', default='data/cifar')
++    p.add_argument('--output', required=True)
++    p.add_argument('--seed', type=int, required=True)
++    p.add_argument('--epochs', type=int, default=100)
++    p.add_argument('--batch-size', type=int, default=128)
++    p.add_argument('--lr', type=float, default=.1)
++    p.add_argument('--device', default='cuda:0')
++    p.add_argument('--download', action='store_true')
++    args = p.parse_args()
++    if Path(args.output).exists():
++        raise ValueError('Output already exists')
++    if args.epochs < 1 or args.batch_size < 1 or args.lr <= 0:
++        raise ValueError('Invalid training parameters')
++    seed_all(args.seed)
++    torch.set_num_threads(4)
++    augment = transforms.Compose([transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(),
++                                   transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
++    plain = transforms.Compose([transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
++    train = datasets.CIFAR10(args.data_root, train=True, transform=augment, download=args.download)
++    val = datasets.CIFAR10(args.data_root, train=True, transform=plain, download=False)
++    perm = torch.randperm(len(train)).tolist()
++    val = DataLoader(Subset(val, perm[:5000]), batch_size=args.batch_size)
++    train = DataLoader(Subset(train, perm[5000:]), batch_size=args.batch_size, shuffle=True)
++    model = build_model('resnet18').to(args.device)
++    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=.9, weight_decay=5e-4)
++    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
++    best, history, started = -1., [], time.perf_counter()
++    for epoch in range(args.epochs):
++        model.train()
++        for x, y in train:
++            optimizer.zero_grad(set_to_none=True)
++            loss = torch.nn.functional.cross_entropy(model(x.to(args.device)), y.to(args.device))
++            loss.backward()
++            optimizer.step()
++        scheduler.step()
++        model.eval()
++        correct, total = 0, 0
++        with torch.inference_mode():
++            for x, y in val:
++                correct += (model(x.to(args.device)).argmax(1).cpu() == y).sum().item()
++                total += len(y)
++        accuracy = correct/total
++        if accuracy > best:
++            best = accuracy
++            save_model(args.output, model, 'resnet18')
++        history.append({'epoch': epoch+1, 'validation_accuracy': accuracy})
++        print(history[-1], flush=True)
++    save_json(str(args.output)+'.json', dict(seed=args.seed, history=history,
++              seconds=time.perf_counter()-started, purpose='Independent unwatermarked public-CIFAR10 control'))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/identification/fine_tune.py b/identification/fine_tune.py
+index 104702d..afa05c0 100644
+--- a/identification/fine_tune.py
++++ b/identification/fine_tune.py
+@@ -54,7 +54,11 @@ def create_color_batch(value_idx, batch_size):
+ 
+     # 检查颜色参数是否有效
+     if value_idx not in color_dict.keys():
+-        raise ValueError("Color must be 'red', 'green', or 'blue', and so on.")
++        # Keep the first ten original keys unchanged; support larger client counts.
++        import colorsys
++        if value_idx < 0:
++            raise ValueError('Client index must be nonnegative')
++        color_dict[value_idx] = torch.tensor(colorsys.hsv_to_rgb((value_idx * .61803398875) % 1, .65, .85))
+ 
+     # 创建一个批次的数据，每个样本都是选定的颜色，且大小为 [3, 32, 32]
+     data = torch.stack([color_dict[value_idx]] * batch_size)    # shape: [batch_size, 3]
+diff --git a/identification/utils_training.py b/identification/utils_training.py
+index 0a7e13c..bc7f9f0 100644
+--- a/identification/utils_training.py
++++ b/identification/utils_training.py
+@@ -361,24 +361,25 @@ def final_unharmful_retrain(dataset, net_glob, y_label_last_round, triggers_list
+     criterion = nn.CrossEntropyLoss()
+     optimizer = torch.optim.SGD(net_glob.parameters(), lr=param['relearning_lr'], momentum=0.9, weight_decay=5e-4)
+ 
+-    unlearning_dataloader1 = DataLoader(dataset, batch_size=32, shuffle=False)
++    batch_size = int(param.get('relearning_batch_size', 32))
++    unlearning_dataloader1 = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+ 
+     unlearning_dataloaders = []
+-    for i in range(20):
++    for i in range(len(y_label_last_round)):
+         y = y_label_last_round[i]
+         unlearning_dataloaders.append(DataLoader(NormalDatasetAddReversedTrigger(dataset, triggers_list[i][y],
+                                                                                  masks_list[i][y], device),
+-                                                 batch_size=32, shuffle=False))
+-        fake_data = create_color_batch(value_idx=i, batch_size=2500)
++                                                 batch_size=batch_size, shuffle=False))
++        fake_data = create_color_batch(value_idx=i, batch_size=len(dataset))
+ 
+         unlearning_dataloaders.append(DataLoader(SpecificDatasetAddReversedTrigger(fake_data, y,
+                                                                                    triggers_list[i][y],
+                                                                                    masks_list[i][y], device),
+-                                                 batch_size=32, shuffle=False))
++                                                 batch_size=batch_size, shuffle=False))
+ 
+     print("Start Unlearning Retrain!!!\n")
+     torch.autograd.set_detect_anomaly(True)
+-    for epoch in range(param["relearning_eps"]):
++    for epoch in range(int(param["relearning_eps"])):
+         ep_loss = [0] * 21  # Create a loss variable for each data loader
+         data_loader_tqdm = [tqdm(loader, desc=f'unlearning_Batches {i + 1}') for i, loader in
+                             enumerate([unlearning_dataloader1] + unlearning_dataloaders)]
+@@ -407,8 +408,8 @@ def final_unharmful_retrain(dataset, net_glob, y_label_last_round, triggers_list
+                                  combined_labels[i * len(batches[0][0]):(i + 1) * len(batches[0][0])])
+                 total_loss += loss
+ 
+-            torch.nn.utils.clip_grad_norm_(net_glob.parameters(), max_norm=20)
+             total_loss.backward()
++            torch.nn.utils.clip_grad_norm_(net_glob.parameters(), max_norm=20)
+             optimizer.step()
+ 
+     return net_glob.state_dict()
+diff --git a/main_fed.py b/main_fed.py
+index 43426b4..801785f 100644
+--- a/main_fed.py
++++ b/main_fed.py
+@@ -8,6 +8,7 @@ import copy
+ import os
+ import ast
+ import time
++import random
+ from datetime import datetime
+ 
+ # External packages
+@@ -72,6 +73,20 @@ class DatasetCL(Dataset):
+         return train_dataset
+ 
+ 
++class ReservedDataset(Dataset):
++    """Deterministic transform wrapper for held-out server indices."""
++    def __init__(self, dataset, indices, transform):
++        self.dataset = Subset(dataset, list(indices))
++        self.transform = transform
++
++    def __len__(self):
++        return len(self.dataset)
++
++    def __getitem__(self, index):
++        image, label = self.dataset[index]
++        return self.transform(image) if self.transform else image, label
++
++
+ ##########################################################################################
+ def load_and_split_dataset(args):
+     transform_train = None
+@@ -256,6 +271,23 @@ def train_model(args, net_glob, my_dict=None, my_dict_label=None, wm_or_not_dict
+     triggers_by_index, masks_by_index = create_trigger_and_mask_idxs(args.dataset, args.device, args.num_users)
+     dataset_test_re_ul_rl = DatasetCL(args, full_dataset=dataset_train,
+                                       transform=transform_test)  # Determine defense data size, default 1000 images
++    # Server defense data must not occur in any client's private training partition.
++    reserved_indices = set(map(int, dataset_test_re_ul_rl.dataset.indices))
++    validation = None
++    if args.trace_export_dir:
++        if args.dataset != 'cifar' or args.model != 'cnn':
++            raise ValueError('Trace export currently supports CIFAR-10 / original ResNet18 only')
++        if os.path.exists(args.trace_export_dir):
++            raise ValueError('trace_export_dir must not exist; preserve previous server exports')
++        available = sorted(set(range(len(dataset_train))) - reserved_indices)
++        count = max(1, int(.2 * len(reserved_indices)))
++        validation_indices = np.random.choice(available, count, replace=False).tolist()
++        validation = ReservedDataset(dataset_train, validation_indices, transform_test)
++        reserved_indices.update(validation_indices)
++    for client in dict_users:
++        dict_users[client] = sorted(set(map(int, dict_users[client])) - reserved_indices)
++        if not dict_users[client]:
++            raise ValueError('Empty client partition after reserving server data')
+     dataset_test_silo = Subset(dataset_test, range(1000, ))
+     #############################################################################
+     # y_label_last_round extended to args.num_users clients
+@@ -267,12 +299,15 @@ def train_model(args, net_glob, my_dict=None, my_dict_label=None, wm_or_not_dict
+     print(idxs_users)
+ 
+     for iter in range(args.epochs):  # Default 200 epochs
++        round_start = copy.deepcopy(net_glob.state_dict())
+         start_time1 = time.time()  # Track time for each epoch start
+         loss_locals = []
+         if not args.all_clients:
+             w_locals = []
+ 
+         for idx in idxs_users:
++            # All clients start from the SAME global state for this communication round.
++            net_glob.load_state_dict(round_start)
+             start_time2 = time.time()  # Track time for each user start
+             print(f"Training: round {iter}, Client {idx} starts local training!!!")
+             print(f"Original watermark label: {my_dict_label[idx]}")
+@@ -309,9 +344,9 @@ def train_model(args, net_glob, my_dict=None, my_dict_label=None, wm_or_not_dict
+                 print(y_label_last_round)
+ 
+             if args.all_clients:
+-                w_locals[idx] = copy.deepcopy(w)
++                w_locals[idx] = copy.deepcopy(create_pruned_model(net_glob, selected_kernels).model.state_dict())
+             else:
+-                w_locals.append(copy.deepcopy(w))
++                w_locals.append(copy.deepcopy(create_pruned_model(net_glob, selected_kernels).model.state_dict()))
+             loss_locals.append(copy.deepcopy(loss))
+ 
+             end_time2 = time.time()  # Track time for each user end
+@@ -339,7 +374,8 @@ def train_model(args, net_glob, my_dict=None, my_dict_label=None, wm_or_not_dict
+                 f"Epoch {iter} - Allocated GPU memory: {allocated:.2f} MB, T1 Local training - Reserved GPU memory: {reserved:.2f} MB\n")
+ 
+         # Update global weights
+-        w_glob = FedAvg(w_locals)
++        aggregate_order = range(args.num_users) if args.all_clients else idxs_users
++        w_glob = FedAvg(w_locals, [len(dict_users[i]) for i in aggregate_order])
+ 
+         # Copy weight to net_glob
+         net_glob.load_state_dict(w_glob)
+@@ -370,17 +406,17 @@ def train_model(args, net_glob, my_dict=None, my_dict_label=None, wm_or_not_dict
+         f.write(
+             f"RL training code - Allocated GPU memory: {allocated:.2f} MB, T1 Local training - Reserved GPU memory: {reserved:.2f} MB\n")
+     net_glob.load_state_dict(w_global)
++    if args.trace_export_dir:
++        from traceability.integration import export_sanitizer
++        export_sanitizer(net_glob, dataset_test_re_ul_rl, validation, args.trace_export_dir,
++                         y_label_last_round, triggers_by_index, masks_by_index)
+     ##########################################################################################
+     # Test the final model
+-    print("C0\n")
+-    test_silo_with_asr_unharmful_cifar(net_glob, dataset_test_silo, dataset_test_silo, args, 0, 'all', my_dict[0],
+-                                       wm_t_label=my_dict_label[0], transform=transform_test)
+-    print("C1\n")
+-    test_silo_with_asr_unharmful_cifar(net_glob, dataset_test_silo, dataset_test_silo, args, 1, 'all', my_dict[1],
+-                                       wm_t_label=my_dict_label[1], transform=transform_test)
+-    print("C2\n")
+-    test_silo_with_asr_unharmful_cifar(net_glob, dataset_test_silo, dataset_test_silo, args, 2, 'all', my_dict[2],
+-                                       wm_t_label=my_dict_label[2], transform=transform_test)
++    for client in range(min(3, args.num_users)):
++        print(f'C{client}\n')
++        test_silo_with_asr_unharmful_cifar(net_glob, dataset_test_silo, dataset_test_silo, args,
++                                         client, 'all', my_dict[client],
++                                         wm_t_label=my_dict_label[client], transform=transform_test)
+ 
+     return loss_train, idxs_users
+ 
+@@ -409,6 +445,11 @@ if __name__ == '__main__':
+ 
+     # Parse args
+     args = args_parser()
++    random.seed(args.seed)
++    np.random.seed(args.seed)
++    torch.manual_seed(args.seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed_all(args.seed)
+     print(args)
+     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
+ 
+@@ -453,6 +494,7 @@ if __name__ == '__main__':
+         f.write(f"Overall training code execution time: {execution_time:.4f} seconds")
+ 
+     # Plot loss curve
++    os.makedirs('./save', exist_ok=True)
+     plt.figure()
+     plt.plot(range(len(loss_train)), loss_train)
+     plt.ylabel('train_loss')
+diff --git a/pytest.ini b/pytest.ini
+new file mode 100644
+index 0000000..a644aeb
+--- /dev/null
++++ b/pytest.ini
+@@ -0,0 +1,2 @@
++[pytest]
++testpaths = tests/traceability
+diff --git a/requirements-trace.txt b/requirements-trace.txt
+new file mode 100644
+index 0000000..9e1ee73
+--- /dev/null
++++ b/requirements-trace.txt
+@@ -0,0 +1,5 @@
++# Install a matched torch/torchvision pair for your CPU or CUDA first (see TRACEABILITY_ZH.md).
++numpy>=1.26,<2
++Pillow>=10,<12
++# Optional test dependency:
++pytest>=8,<9
+diff --git a/requirements.txt b/requirements.txt
+index ea2d7f7..58bc841 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -2,5 +2,8 @@ matplotlib==3.8.4
+ numpy==1.26.4
+ Pillow==10.3.0
+ torch==2.4.0
+-torchvision==0.18.0
++torchvision==0.19.0
+ tqdm==4.66.4
++torchsummary==1.5.1
++thop==0.1.1.post2209072238
++einops==0.8.0
+diff --git a/tests/traceability/test_protocol.py b/tests/traceability/test_protocol.py
+new file mode 100644
+index 0000000..8e33f5c
+--- /dev/null
++++ b/tests/traceability/test_protocol.py
+@@ -0,0 +1,131 @@
++import io
++import json
++import threading
++from http.server import BaseHTTPRequestHandler, HTTPServer
++
++import numpy as np
++import pytest
++import torch
++from PIL import Image
++
++from traceability.common import (TinySmokeNet, build_model, data_bundle, load_data, load_model,
++                                normalize, save_json, save_model, save_private)
++from traceability.keys import expected, generate_key, overlay, queries, write_key
++from traceability.training import one_step_robust_loss
++from traceability.verification import (calibrate, decide, http_labels, png_bytes,
++                                      scores_for_labels, validate_labels)
++
++
++@pytest.fixture(autouse=True)
++def threads():
++    torch.set_num_threads(2)
++
++
++def test_default_codebook_and_secret_splits():
++    key = generate_key(seed=11)
++    assert key['min_distance'] >= 20
++    q, bits, digest = queries(key, 'test', 2)
++    q2, bits2, digest2 = queries(key, 'test', 2)
++    train, _, train_digest = queries(key, 'train', 2)
++    cal, _, cal_digest = queries(key, 'calibration', 2)
++    assert torch.equal(q, q2) and torch.equal(bits, bits2) and digest == digest2
++    assert len({digest, train_digest, cal_digest}) == 3
++    assert not torch.equal(q, train) and not torch.equal(q, cal)
++    for i in range(10):
++        scores = scores_for_labels(key, expected(key, i, bits), bits)
++        assert scores[i] == 1
++        assert max(s for j, s in enumerate(scores) if j != i) <= 1-20/64
++
++
++def test_secret_not_overwritten_and_keys_random(tmp_path):
++    write_key(tmp_path/'key.pt')
++    with pytest.raises(FileExistsError):
++        write_key(tmp_path/'key.pt')
++    assert generate_key()['key_id'] != generate_key()['key_id']
++
++
++def test_png_transport_preserves_query_pixels():
++    key = generate_key(2, 8, 2, seed=3)
++    q, _, _ = queries(key, 'test', 1)
++    image = Image.open(io.BytesIO(png_bytes(q[0]))).convert('RGB')
++    restored = normalize(torch.from_numpy(np.array(image)).permute(2, 0, 1).float()/255)
++    assert torch.allclose(restored, q[0], atol=1e-6)
++
++
++def test_decoder_rejects_ties_and_unrelated_classes():
++    assert decide([.9, .9], .8, .01)['recipient'] is None
++    assert decide([.6, .2], .8, .1)['recipient'] is None
++    assert decide([.95, .6], .8, .1)['recipient'] == 0
++    key = generate_key(2, 8, 2, seed=4)
++    _, bits, _ = queries(key, variants=1)
++    other = torch.tensor([next(k for k in range(10) if k not in pair) for pair in key['label_pairs']])
++    assert scores_for_labels(key, other, bits) == [0., 0.]
++    for labels in [[0.1], [10], [-1], [True], [1, 2]]:
++        with pytest.raises(ValueError):
++            validate_labels(labels, 1)
++
++
++def test_calibration_requires_controls_and_all_recipients():
++    key = generate_key(2, 8, 2, seed=3)
++    report = dict(key_id=key['key_id'], split='calibration', variants=4, query_sha256='test', rows=[
++        dict(recipient=0, scores=[.95, .45], sha256='a'),
++        dict(recipient=1, scores=[.4, .95], sha256='b'),
++        dict(recipient=None, scores=[.7, .5], sha256='c')])
++    c = calibrate(report, key, max_false_rate=0, min_recall=1)
++    assert c['calibration_counts']['correct'] == 2
++    assert c['calibration_counts']['false_attributed_unknown'] == 0
++    assert decide([.7, .5], c['tau'], c['delta'])['recipient'] is None
++    report['rows'].pop()
++    with pytest.raises(ValueError, match='unknown control'):
++        calibrate(report, key)
++
++
++def test_tensor_roles_and_original_checkpoint_compatibility(tmp_path):
++    x, y = torch.randn(2, 3, 32, 32), torch.tensor([1, 2])
++    save_private(tmp_path/'data.pt', data_bundle(x, y, 'test'))
++    assert len(load_data(tmp_path/'data.pt', 'test')[0]) == 2
++    with pytest.raises(ValueError):
++        load_data(tmp_path/'data.pt', 'defense')
++    model = build_model('resnet18').eval()
++    torch.save(model.state_dict(), tmp_path/'upstream.pth')
++    restored = load_model(tmp_path/'upstream.pth')
++    with torch.no_grad():
++        assert torch.equal(model(x), restored(x))
++
++
++def test_robust_loss_backpropagates_and_does_not_mutate_model():
++    model = TinySmokeNet()
++    before = {k: v.clone() for k, v in model.state_dict().items()}
++    x = torch.randn(3, 3, 32, 32)
++    loss = one_step_robust_loss(model, x, torch.tensor([0, 1, 2]), x*.5, torch.tensor([3, 4, 5]), .01)
++    loss.backward()
++    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
++    assert all(torch.equal(before[k], v) for k, v in model.state_dict().items())
++
++
++def test_http_label_only_protocol():
++    seen = []
++    class Handler(BaseHTTPRequestHandler):
++        def log_message(self, *args):
++            pass
++        def do_POST(self):
++            import base64
++            payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
++            for value in payload['images']:
++                assert Image.open(io.BytesIO(base64.b64decode(value))).size == (32, 32)
++                seen.append(value)
++            body = json.dumps({'labels': [3]*len(payload['images'])}).encode()
++            self.send_response(200)
++            self.end_headers()
++            self.wfile.write(body)
++    server = HTTPServer(('127.0.0.1', 0), Handler)
++    thread = threading.Thread(target=server.serve_forever, daemon=True)
++    thread.start()
++    try:
++        q, _, _ = queries(generate_key(2, 8, 2, seed=1), variants=1)
++        labels = http_labels(f'http://127.0.0.1:{server.server_port}', q, batch_size=3)
++        assert labels.tolist() == [3]*8 and len(seen) == 8
++    finally:
++        server.shutdown()
++        thread.join()
++        server.server_close()
+diff --git a/tests/traceability/test_training.py b/tests/traceability/test_training.py
+new file mode 100644
+index 0000000..317387d
+--- /dev/null
++++ b/tests/traceability/test_training.py
+@@ -0,0 +1,41 @@
++import copy
++from pathlib import Path
++
++import pytest
++import torch
++
++from traceability.common import TinySmokeNet, data_bundle, load_tensors, save_model, save_private
++from traceability.keys import generate_key
++from traceability.training import EmbedConfig, personalize
++
++
++def test_independent_copies_and_no_secrets_in_deliverable(tmp_path):
++    torch.set_num_threads(2)
++    torch.manual_seed(0)
++    base = TinySmokeNet()
++    save_model(tmp_path/'base.pt', base, 'tiny_smoke')
++    for role in ['defense', 'validation']:
++        x = torch.randn(8, 3, 32, 32)
++        y = base(x).argmax(1)
++        save_private(tmp_path/f'{role}.pt', data_bundle(x, y, role))
++    key = generate_key(2, 4, 1, seed=3)
++    config = EmbedConfig(epochs=1, batch_size=4, max_steps=1, max_accuracy_drop=1., robust_weight=.1,
++                         train_variants=1, validation_variants=1)
++    args = (tmp_path/'base.pt', key, tmp_path/'defense.pt', tmp_path/'validation.pt')
++    personalize(*args, tmp_path/'both', config, 'tiny_smoke')
++    personalize(*args, tmp_path/'alone', config, 'tiny_smoke', selected=[1])
++    both = load_tensors(tmp_path/'both/distribution/copy_001/model.pt')
++    alone = load_tensors(tmp_path/'alone/distribution/copy_001/model.pt')
++    assert set(both) == {'arch', 'state_dict'}
++    assert all(torch.equal(value, alone['state_dict'][name]) for name, value in both['state_dict'].items())
++    unchanged = load_tensors(tmp_path/'base.pt')['state_dict']
++    assert all(torch.equal(value, unchanged[name]) for name, value in base.state_dict().items())
++
++
++def test_overlap_rejected(tmp_path):
++    for role in ['defense', 'validation']:
++        save_private(tmp_path/f'{role}.pt', data_bundle(torch.zeros(2, 3, 32, 32), torch.zeros(2).long(),
++                                                       role, source='cifar10/train', indices=[1, 2]))
++    with pytest.raises(ValueError, match='overlap'):
++        personalize('unused.pt', generate_key(2, 4, 1), tmp_path/'defense.pt', tmp_path/'validation.pt',
++                    tmp_path/'out', EmbedConfig())
+diff --git a/tests/traceability/test_upstream_integration.py b/tests/traceability/test_upstream_integration.py
+new file mode 100644
+index 0000000..ff9fe56
+--- /dev/null
++++ b/tests/traceability/test_upstream_integration.py
+@@ -0,0 +1,86 @@
++"""Regression checks for upstream bugs that directly affect the exported base model."""
++import copy
++from types import SimpleNamespace
++
++import numpy as np
++import torch
++from torch.utils.data import TensorDataset
++
++
++def test_weighted_average_preserves_integer_buffers():
++    from average.Fed import FedAvg
++    result = FedAvg([{'w': torch.tensor([1.]), 'n': torch.tensor(2)},
++                     {'w': torch.tensor([3.]), 'n': torch.tensor(3)}], [1, 3])
++    assert result['w'].item() == 2.5
++    assert result['n'].dtype == torch.int64 and result['n'].item() == 3
++
++
++def test_pruned_bn_channels_emit_zero():
++    from architectures.nets_ResNet18 import ResNet18
++    from core.resnet_cifar.unlearning_extraction_function import create_pruned_model
++    torch.set_num_threads(2)
++    model = ResNet18().eval()
++    with torch.no_grad():
++        model.bn1.bias[0] = 5
++    pruned = create_pruned_model(model, {'conv1.weight': [0]}).model.eval()
++    with torch.no_grad():
++        assert torch.count_nonzero(pruned.bn1(pruned.conv1(torch.rand(1, 3, 32, 32)))[:, 0]) == 0
++    assert model.bn1.bias[0] == 5  # Original object untouched.
++
++
++def test_final_relearning_supports_two_clients_and_partial_batch():
++    from identification.utils_training import final_unharmful_retrain
++    from traceability.common import TinySmokeNet
++    torch.set_num_threads(2)
++    model = TinySmokeNet()
++    data = TensorDataset(torch.randn(5, 3, 32, 32), torch.arange(5))
++    patterns = {i: [torch.zeros(3, 32, 32) for _ in range(10)] for i in range(2)}
++    masks = {i: [torch.zeros(32, 32) for _ in range(10)] for i in range(2)}
++    before = {k: v.clone() for k, v in model.state_dict().items()}
++    result = final_unharmful_retrain(data, model, [0, 1], patterns, masks, '',
++        dict(device='cpu', relearning_lr=.001, relearning_eps=1, relearning_batch_size=3))
++    assert any(not torch.equal(before[k], v) for k, v in result.items())
++
++
++def test_round_start_and_reserved_data(monkeypatch, tmp_path):
++    import main_fed as fed
++    torch.set_num_threads(2)
++    model = torch.nn.Linear(1, 1, bias=False)
++    model.weight.data.zero_()
++    data = TensorDataset(torch.randn(1000, 3, 32, 32), torch.zeros(1000).long())
++    monkeypatch.setattr(fed, 'dataset_train', data, raising=False)
++    monkeypatch.setattr(fed, 'dataset_test', data, raising=False)
++    monkeypatch.setattr(fed, 'dict_users', {0: list(range(500)), 1: list(range(500, 1000))}, raising=False)
++    monkeypatch.setattr(fed, 'transform_test', None, raising=False)
++    monkeypatch.setattr(fed, 'log_dir', str(tmp_path), raising=False)
++    monkeypatch.setattr(fed, 'now_str', 'test', raising=False)
++    starts, local_indices, reserved = [], [], set()
++    class Local:
++        def __init__(self, **kwargs):
++            local_indices.extend(kwargs['idxs'])
++        def train(self, net, iter_outside):
++            starts.append(net.weight.item())
++            with torch.no_grad():
++                net.weight.add_(1)
++            return net.state_dict(), 1.
++    def identify(args, local, other, defense, *rest, **kw):
++        reserved.update(defense.dataset.indices)
++        return local, {}
++    def pruned(local, indices):
++        m = copy.deepcopy(local)
++        m.weight.data.zero_()
++        return SimpleNamespace(model=m)
++    monkeypatch.setattr(fed, 'LocalUpdate', Local)
++    monkeypatch.setattr(fed, 'main_cifar10_ul', identify)
++    monkeypatch.setattr(fed, 'create_pruned_model', pruned)
++    monkeypatch.setattr(fed, 'reverse_engineering_nn', lambda *a, **kw:
++                        (0, kw['triggers_1'], kw['masks_1'], {}))
++    monkeypatch.setattr(fed, 'final_unharmful_retrain', lambda data, net, *a, **kw: net.state_dict())
++    monkeypatch.setattr(fed, 'test_silo_with_asr_unharmful_cifar', lambda *a, **kw: None)
++    monkeypatch.setattr(fed, 'save_model', lambda *a, **kw: None)
++    args = SimpleNamespace(device='cpu', dataset='cifar', all_clients=True, num_users=2,
++                           defense_data_ratio=.05, trace_export_dir=None, epochs=2,
++                           gpu=-1, log_dir=str(tmp_path))
++    fed.train_model(args, model, {0:'white_block', 1:'white_block'}, {0:0, 1:0}, {0:True, 1:True})
++    assert starts == [0., 0., 0., 0.]  # All rounds aggregated PRUNED updates.
++    assert not reserved.intersection(local_indices)
+diff --git a/trace_cli.py b/trace_cli.py
+new file mode 100644
+index 0000000..140023a
+--- /dev/null
++++ b/trace_cli.py
+@@ -0,0 +1,6 @@
++#!/usr/bin/env python3
++"""Post-Sanitizer harmless recipient fingerprint experiments."""
++from traceability.cli import main
++
++if __name__ == '__main__':
++    main()
+diff --git a/traceability/__init__.py b/traceability/__init__.py
+new file mode 100644
+index 0000000..d45f5ae
+--- /dev/null
++++ b/traceability/__init__.py
+@@ -0,0 +1 @@
++"""Experimental harmless recipient fingerprints for Sanitizer (not a security proof)."""
+diff --git a/traceability/cli.py b/traceability/cli.py
+new file mode 100644
+index 0000000..f21c2b8
+--- /dev/null
++++ b/traceability/cli.py
+@@ -0,0 +1,190 @@
++"""Command-line entry point. Run python trace_cli.py --help from the repository root."""
++import argparse
++import os
++from pathlib import Path
++
++import torch
++
++from .common import load_model, predict, read_json, save_json, data_bundle, save_private, normalize
++from .keys import read_key, write_key, queries
++from .training import EmbedConfig, personalize
++from .verification import (calibrate, decide, export_queries, http_labels, read_thresholds,
++                           score_manifest, scores_for_labels, validate_labels)
++from .evaluation import evaluate, modify_model
++
++
++def model_args(p):
++    p.add_argument('--arch', choices=['resnet18', 'tiny_smoke'], default='resnet18')
++    p.add_argument('--device', default='cpu')
++    p.add_argument('--batch-size', type=int, default=64)
++
++
++def key_args(p):
++    p.add_argument('--key', required=True)
++    p.add_argument('--variants', type=int, default=4)
++
++
++def prepare_data(args):
++    from torchvision.datasets import CIFAR10
++    from torchvision.transforms import ToTensor
++    dataset = CIFAR10(args.data_root, train=args.role != 'test', download=args.download)
++    if args.role == 'test':
++        if args.indices:
++            raise ValueError('Test export uses official CIFAR-10 test split; omit --indices')
++        indices = list(range(len(dataset)))
++    else:
++        if not args.indices:
++            raise ValueError('An explicit disjoint index list is required for defense/validation/attack')
++        indices = read_json(args.indices)
++    if not isinstance(indices, list) or not indices or len(set(indices)) != len(indices):
++        raise ValueError('Indices must be a nonempty unique JSON list')
++    if any(type(i) is not int or i < 0 or i >= len(dataset) for i in indices):
++        raise ValueError('Invalid CIFAR sample index')
++    if args.limit:
++        indices = indices[:args.limit]
++    convert = ToTensor()
++    x = torch.stack([normalize(convert(dataset[i][0])) for i in indices])
++    y = torch.tensor([dataset[i][1] for i in indices])
++    save_private(args.output, data_bundle(x, y, args.role, indices=indices,
++                 source='cifar10/test' if args.role == 'test' else 'cifar10/train'))
++    return {'samples': len(indices), 'role': args.role}
++
++
++def parser():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--threads', type=int, default=4)
++    sub = p.add_subparsers(dest='command', required=True)
++    k = sub.add_parser('keys', help='Create SERVER-ONLY private key; no overwrite')
++    k.add_argument('--output', required=True)
++    k.add_argument('--recipients', type=int, default=10)
++    k.add_argument('--bits', type=int, default=64)
++    k.add_argument('--distance', type=int, default=20)
++    k.add_argument('--seed', type=int, help='Research reproducibility only; omit for a random secret')
++    k.add_argument('--patch-size', type=int, default=4)
++    d = sub.add_parser('prepare-data', help='Export normalized CIFAR tensors with explicit roles')
++    d.add_argument('--data-root', default='./data/cifar')
++    d.add_argument('--role', choices=['defense', 'validation', 'test', 'attack'], required=True)
++    d.add_argument('--indices', help='JSON integer list; choose disjoint reserve indices BEFORE training')
++    d.add_argument('--download', action='store_true')
++    d.add_argument('--limit', type=int, default=0)
++    d.add_argument('--output', required=True)
++    e = sub.add_parser('embed', help='Independent recipient copies; D by default, E with --robust-weight')
++    model_args(e)
++    e.add_argument('--key', required=True)
++    e.add_argument('--base', required=True)
++    e.add_argument('--defense-data', required=True)
++    e.add_argument('--validation-data', required=True)
++    e.add_argument('--contribution-data')
++    e.add_argument('--output-dir', required=True)
++    e.add_argument('--recipients', type=int, nargs='+', help='Optional zero-based subset of enrolled recipients')
++    defaults = EmbedConfig()
++    for name in ['epochs', 'robust_every', 'train_variants', 'validation_variants', 'seed', 'max_steps']:
++        e.add_argument('--'+name.replace('_', '-'), type=int, default=getattr(defaults, name))
++    for name in ['lr', 'task_weight', 'fingerprint_weight', 'safety_weight', 'contribution_weight',
++                 'robust_weight', 'inner_lr', 'max_accuracy_drop']:
++        e.add_argument('--'+name.replace('_', '-'), type=float, default=getattr(defaults, name))
++    c = sub.add_parser('calibrate', help='Fit score AND margin thresholds using whole-model controls')
++    key_args(c)
++    model_args(c)
++    c.add_argument('--manifest', required=True)
++    c.add_argument('--output', required=True)
++    c.add_argument('--max-false-rate', type=float, default=.01)
++    c.add_argument('--min-recall', type=float, default=.8)
++    t = sub.add_parser('trace', help='Label-only verification: local, HTTP or offline returned labels')
++    key_args(t)
++    model_args(t)
++    t.add_argument('--thresholds', required=True)
++    source = t.add_mutually_exclusive_group(required=True)
++    source.add_argument('--checkpoint')
++    source.add_argument('--endpoint')
++    source.add_argument('--responses', help='JSON with key_id, query_sha256 and labels in query order')
++    t.add_argument('--token-env', help='Name of environment variable containing optional API bearer token')
++    t.add_argument('--timeout', type=float, default=30)
++    t.add_argument('--output', required=True)
++    q = sub.add_parser('export-queries', help='Write private test PNGs; only send to a suspect service for verification')
++    key_args(q)
++    q.add_argument('--output-dir', required=True)
++    v = sub.add_parser('evaluate', help='Held-out trace matrix and paired safety metrics')
++    key_args(v)
++    model_args(v)
++    v.add_argument('--manifest', required=True)
++    v.add_argument('--thresholds', required=True)
++    v.add_argument('--test-data')
++    v.add_argument('--base')
++    v.add_argument('--contribution-data')
++    v.add_argument('--original-triggers')
++    v.add_argument('--max-samples', type=int, default=0)
++    v.add_argument('--output', required=True)
++    a = sub.add_parser('attack', help='Generate modified copy for evaluation (does not overwrite source)')
++    model_args(a)
++    a.add_argument('--checkpoint', required=True)
++    a.add_argument('--output', required=True)
++    a.add_argument('--method', choices=['finetune', 'prune', 'weight-round'], required=True)
++    a.add_argument('--attack-data')
++    a.add_argument('--amount', type=float, default=.2)
++    a.add_argument('--epochs', type=int, default=1)
++    a.add_argument('--lr', type=float, default=.001)
++    a.add_argument('--seed', type=int, default=7)
++    return p
++
++
++def main(argv=None):
++    args = parser().parse_args(argv)
++    if args.threads < 1 or getattr(args, 'batch_size', 1) < 1:
++        raise ValueError('threads and batch-size must be positive')
++    torch.set_num_threads(args.threads)
++    if getattr(args, 'device', 'cpu').startswith('cuda') and not torch.cuda.is_available():
++        raise ValueError('CUDA requested but unavailable; use --device cpu')
++    if args.command == 'keys':
++        key = write_key(args.output, recipients=args.recipients, bits=args.bits, distance=args.distance,
++                        seed=args.seed, patch_size=args.patch_size)
++        result = {'key_id': key['key_id'], 'min_distance': key['min_distance'], 'server_only': True}
++    elif args.command == 'prepare-data':
++        result = prepare_data(args)
++    elif args.command == 'embed':
++        cfg = EmbedConfig(**{name: getattr(args, name) for name in EmbedConfig.__dataclass_fields__})
++        result = personalize(args.base, read_key(args.key), args.defense_data, args.validation_data,
++                             args.output_dir, cfg, args.arch, args.device, args.contribution_data, args.recipients)
++        result = {'copies_written': len(result['records']), 'server_registry': args.output_dir+'/server_private/registry.json'}
++    elif args.command == 'calibrate':
++        key = read_key(args.key)
++        report = score_manifest(args.manifest, key, 'calibration', args.variants,
++                                args.arch, args.device, args.batch_size)
++        result = calibrate(report, key, args.max_false_rate, args.min_recall)
++        save_json(args.output, result)
++        save_json(str(Path(args.output).with_suffix('.scores.json')), report)
++    elif args.command == 'trace':
++        key = read_key(args.key)
++        thresholds = read_thresholds(args.thresholds, key, args.variants)
++        images, bits, digest = queries(key, 'test', args.variants)
++        if args.checkpoint:
++            labels = predict(load_model(args.checkpoint, args.arch, args.device), images, args.batch_size, args.device)
++        elif args.endpoint:
++            token = os.environ[args.token_env] if args.token_env else None
++            labels = http_labels(args.endpoint, images, args.batch_size, args.timeout, token)
++        else:
++            response = read_json(args.responses)
++            if response['key_id'] != key['key_id'] or response['query_sha256'] != digest:
++                raise ValueError('Response belongs to different key, query order or query budget')
++            labels = validate_labels(response['labels'], len(images))
++        result = decide(scores_for_labels(key, labels, bits), thresholds['tau'], thresholds['delta'])
++        result.update(key_id=key['key_id'], query_sha256=digest, queries=len(images))
++        if result['recipient'] is not None:
++            result['recipient_id'] = key['recipient_ids'][result['recipient']]
++        save_json(args.output, result)
++    elif args.command == 'export-queries':
++        result = export_queries(read_key(args.key), args.output_dir, args.variants)
++    elif args.command == 'evaluate':
++        result = evaluate(args.manifest, read_key(args.key), args.thresholds, args.output, args.variants,
++                          args.arch, args.device, args.batch_size, args.test_data, args.base,
++                          args.contribution_data, args.original_triggers, args.max_samples)
++        result = {'counts': result['counts'], 'rates': result['rates'], 'output': args.output}
++    else:
++        if Path(args.output).exists():
++            raise ValueError('Attack output already exists; use a new path')
++        modify_model(args.checkpoint, args.output, args.method, args.arch, args.device, args.amount,
++                     args.attack_data, args.epochs, args.lr, args.batch_size, args.seed)
++        result = {'method': args.method, 'output': args.output}
++    import json
++    print(json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False))
++    return result
+diff --git a/traceability/common.py b/traceability/common.py
+new file mode 100644
+index 0000000..6f9dc3b
+--- /dev/null
++++ b/traceability/common.py
+@@ -0,0 +1,131 @@
++"""Strict checkpoint/data I/O; all image tensors use the upstream CIFAR normalization."""
++import hashlib
++import json
++import os
++import random
++from pathlib import Path
++
++import numpy as np
++import torch
++from torch import nn
++from torch.utils.data import TensorDataset
++
++MEAN = (0.4914, 0.4822, 0.4465)
++STD = (0.2023, 0.1994, 0.2010)
++
++
++def seed_all(seed):
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed_all(seed)
++
++
++def normalize(x):
++    return (x - x.new_tensor(MEAN).view(3, 1, 1)) / x.new_tensor(STD).view(3, 1, 1)
++
++
++def denormalize(x):
++    return x * x.new_tensor(STD).view(3, 1, 1) + x.new_tensor(MEAN).view(3, 1, 1)
++
++
++def sha256(path):
++    h = hashlib.sha256()
++    with open(path, 'rb') as f:
++        for block in iter(lambda: f.read(1 << 20), b''):
++            h.update(block)
++    return h.hexdigest()
++
++
++def save_json(path, value):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + '\n', encoding='utf-8')
++
++
++def read_json(path):
++    return json.loads(Path(path).read_text(encoding='utf-8'))
++
++
++def save_private(path, obj):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    # Do not silently overwrite keys or reference training exports.
++    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
++    with os.fdopen(fd, 'wb') as f:
++        torch.save(obj, f)
++
++
++def load_tensors(path):
++    return torch.load(path, map_location='cpu', weights_only=True)
++
++
++def load_data(path, role=None):
++    obj = load_tensors(path)
++    x, y = obj['images'], obj['labels']
++    if x.ndim != 4 or tuple(x.shape[1:]) != (3, 32, 32) or len(x) == 0:
++        raise ValueError('Expected nonempty [N,3,32,32] CIFAR-normalized images')
++    if not x.is_floating_point() or not torch.isfinite(x).all():
++        raise ValueError('Images must be finite floating-point tensors')
++    if y.dtype != torch.long or y.shape != (len(x),) or y.min() < 0 or y.max() >= 10:
++        raise ValueError('Expected int64 CIFAR-10 labels in [0,9]')
++    if obj.get('normalization') != {'mean': list(MEAN), 'std': list(STD)}:
++        raise ValueError('Missing or incompatible normalization metadata')
++    if role and obj.get('role') != role:
++        raise ValueError(f'Expected data role {role!r}, got {obj.get("role")!r}')
++    return TensorDataset(x.float(), y), obj
++
++
++def data_bundle(x, y, role, **metadata):
++    return dict(images=x.cpu().float(), labels=y.cpu().long(), role=role,
++                normalization={'mean': list(MEAN), 'std': list(STD)}, **metadata)
++
++
++class TinySmokeNet(nn.Module):
++    """Only for offline plumbing tests; never a CIFAR research baseline."""
++    def __init__(self):
++        super().__init__()
++        self.layers = nn.Sequential(nn.Flatten(), nn.Linear(3072, 48), nn.Tanh(), nn.Linear(48, 10))
++
++    def forward(self, x):
++        return self.layers(x)
++
++
++def build_model(arch):
++    if arch == 'resnet18':
++        from architectures.nets_ResNet18 import ResNet18
++        return ResNet18()
++    if arch == 'tiny_smoke':
++        return TinySmokeNet()
++    raise ValueError(f'Unsupported architecture {arch!r}; first release supports CIFAR-10 ResNet18')
++
++
++def load_model(path, arch='resnet18', device='cpu'):
++    obj = load_tensors(path)
++    if 'state_dict' in obj:
++        if obj.get('arch', arch) != arch:
++            raise ValueError('Checkpoint architecture mismatch')
++        state = obj['state_dict']
++    else:
++        state = obj  # Upstream utils.util.save_model writes a bare state_dict.
++    if state and all(k.startswith('module.') for k in state):
++        state = {k[7:]: v for k, v in state.items()}
++    model = build_model(arch)
++    model.load_state_dict(state, strict=True)
++    return model.to(device).eval()
++
++
++def save_model(path, model, arch):
++    # Deliverable checkpoints intentionally contain no codeword, queries or recipient ID.
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    torch.save({'arch': arch, 'state_dict': {k: v.detach().cpu().clone()
++                                          for k, v in model.state_dict().items()}}, path)
++
++
++def predict(model, images, batch_size=64, device='cpu'):
++    model.eval()
++    with torch.inference_mode():
++        return torch.cat([model(x.to(device)).argmax(1).cpu()
++                          for x in images.split(batch_size)])
+diff --git a/traceability/evaluation.py b/traceability/evaluation.py
+new file mode 100644
+index 0000000..2bbb633
+--- /dev/null
++++ b/traceability/evaluation.py
+@@ -0,0 +1,148 @@
++"""Report correct/wrong/rejected attribution, clean utility and paired trigger harm."""
++import copy
++import csv
++from pathlib import Path
++
++import torch
++from torch.nn import functional as F
++from torch.nn.utils import prune
++from torch.utils.data import DataLoader
++
++from .common import load_data, load_model, load_tensors, predict, save_json, save_model, seed_all
++from .keys import overlay
++from .training import freeze_bn
++from .verification import decide, load_manifest, outcome_counts, read_thresholds, score_manifest
++
++
++def safety_metrics(model, reference, data, key, recipient, batch_size=64, device='cpu',
++                   shifts=((0, 0), (2, 2), (-2, -2)), max_samples=0, original_bank=None):
++    x, y = data.tensors
++    if max_samples:
++        x, y = x[:max_samples], y[:max_samples]
++    clean = predict(model, x, batch_size, device)
++    ref_clean = predict(reference, x, batch_size, device)
++    rows = []
++    bits = key['codebook'].shape[1]
++    for bit in range(bits):
++        # Unknown models are evaluated against both candidate labels; known copies use their code.
++        targets = key['label_pairs'][bit].tolist() if recipient is None else [
++            int(key['label_pairs'][bit, key['codebook'][recipient, bit]])]
++        for shift in shifts:
++            triggered = overlay(x, key, torch.full((len(x),), bit), shift=shift)
++            pred = predict(model, triggered, batch_size, device)
++            ref = predict(reference, triggered, batch_size, device)
++            for target in targets:
++                eligible = y != target
++                denom = int(eligible.sum())
++                rows.append(dict(bit=bit, shift=list(shift), target=target, eligible=denom,
++                                 triggered_accuracy=(pred == y).float().mean().item(),
++                                 reference_triggered_accuracy=(ref == y).float().mean().item(),
++                                 target_asr=(pred[eligible] == target).float().mean().item() if denom else None,
++                                 reference_target_asr=(ref[eligible] == target).float().mean().item() if denom else None,
++                                 prediction_change=(pred != clean).float().mean().item()))
++    old_rows = []
++    if original_bank is not None:
++        for i, (pattern, mask, target) in enumerate(zip(original_bank['patterns'], original_bank['masks'],
++                                                       original_bank['targets'])):
++            # Recovered upstream patterns already live in normalized model-input coordinates.
++            triggered = (1-mask)*x + mask*pattern
++            pred, ref = predict(model, triggered, batch_size, device), predict(reference, triggered, batch_size, device)
++            target = int(target)
++            eligible = y != target
++            old_rows.append(dict(index=i, target=target, eligible=int(eligible.sum()),
++                                 target_asr=(pred[eligible] == target).float().mean().item() if eligible.any() else None,
++                                 reference_target_asr=(ref[eligible] == target).float().mean().item() if eligible.any() else None))
++    valid = [r for r in rows if r['eligible']]
++    return dict(samples=len(x), clean_accuracy=(clean == y).float().mean().item(),
++                reference_clean_accuracy=(ref_clean == y).float().mean().item(),
++                mean_target_asr=sum(r['target_asr'] for r in valid)/len(valid) if valid else None,
++                mean_reference_target_asr=sum(r['reference_target_asr'] for r in valid)/len(valid) if valid else None,
++                worst_target_asr=max((r['target_asr'] for r in valid), default=None),
++                worst_asr_increase=max((r['target_asr']-r['reference_target_asr'] for r in valid), default=None),
++                per_pattern=rows, original_triggers=old_rows)
++
++
++def evaluate(manifest, key, thresholds_path, output, variants=4, arch='resnet18', device='cpu',
++             batch_size=64, test_data=None, base_path=None, contribution_path=None,
++             original_triggers=None, max_samples=0):
++    thresholds = read_thresholds(thresholds_path, key, variants)
++    report = score_manifest(manifest, key, 'test', variants, arch, device, batch_size)
++    for row in report['rows']:
++        if row['recipient'] is None and row['sha256'] in thresholds['calibration_unknown_hashes']:
++            raise ValueError('Unknown test model was used for threshold calibration; use independent controls')
++        row['decision'] = decide(row['scores'], thresholds['tau'], thresholds['delta'])
++    report['counts'] = outcome_counts(report['rows'], thresholds['tau'], thresholds['delta'])
++    counts = report['counts']
++    report['rates'] = dict(correct_attribution=counts['correct']/counts['known'] if counts['known'] else None,
++                           wrong_attribution=counts['wrong_known']/counts['known'] if counts['known'] else None,
++                           known_rejection=counts['rejected_known']/counts['known'] if counts['known'] else None,
++                           unknown_false_attribution=counts['false_attributed_unknown']/counts['unknown']
++                           if counts['unknown'] else None)
++    report['unknown_zero_error_upper95'] = (1-.05**(1/counts['unknown'])) if (
++        counts['unknown'] and not counts['false_attributed_unknown']) else None
++    report['statistical_note'] = ('Model-level counts. Binomial bound only meaningful for independent representative '
++                                  'unknown models and fixed thresholds. Related checkpoints are correlated.')
++    if test_data:
++        if not base_path:
++            raise ValueError('Safety evaluation requires a paired --base checkpoint')
++        data, _ = load_data(test_data, 'test')
++        reference = load_model(base_path, arch, device)
++        bank = load_tensors(original_triggers) if original_triggers else None
++        contribution = load_data(contribution_path, 'contribution_test')[0] if contribution_path else None
++        for row, record in zip(report['rows'], load_manifest(manifest, key)):
++            model = load_model(record['path'], arch, device)
++            row['safety'] = safety_metrics(model, reference, data, key, row['recipient'], batch_size,
++                                           device, max_samples=max_samples, original_bank=bank)
++            if contribution:
++                cx, cy = contribution.tensors
++                row['contribution_verification_rate'] = (predict(model, cx, batch_size, device) == cy).float().mean().item()
++                row['reference_contribution_verification_rate'] = (
++                    predict(reference, cx, batch_size, device) == cy).float().mean().item()
++            del model
++    save_json(output, report)
++    csv_path = Path(output).with_suffix('.csv')
++    with csv_path.open('w', newline='', encoding='utf-8') as f:
++        writer = csv.writer(f)
++        writer.writerow(['model', 'true_recipient', 'predicted_recipient', 'status', *key['recipient_ids']])
++        for row in report['rows']:
++            writer.writerow([row['name'], row['recipient'], row['decision']['recipient'],
++                             row['decision']['status'], *row['scores']])
++    return report
++
++
++def modify_model(checkpoint, output, method, arch='resnet18', device='cpu', amount=.2,
++                 data_path=None, epochs=1, lr=.001, batch_size=64, seed=7):
++    if not 0 <= amount < 1 or epochs < 1 or lr <= 0:
++        raise ValueError('Invalid attack strength')
++    seed_all(seed)
++    model = load_model(checkpoint, arch, device)
++    if method == 'prune':
++        params = [(m, 'weight') for m in model.modules() if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear))]
++        prune.global_unstructured(params, pruning_method=prune.L1Unstructured, amount=amount)
++        for module, name in params:
++            prune.remove(module, name)
++    elif method == 'finetune':
++        if not data_path:
++            raise ValueError('Fine-tuning requires --attack-data with role attack, not test/defense')
++        data, _ = load_data(data_path, 'attack')
++        loader = DataLoader(data, batch_size=batch_size, shuffle=True)
++        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=.9)
++        model.train()
++        freeze_bn(model)
++        for _ in range(epochs):
++            for x, y in loader:
++                optimizer.zero_grad(set_to_none=True)
++                F.cross_entropy(model(x.to(device)), y.to(device)).backward()
++                optimizer.step()
++    elif method == 'weight-round':
++        # Simulated int8 weight rounding, NOT deployment/backend int8 quantization.
++        with torch.no_grad():
++            for p in model.parameters():
++                if p.ndim >= 2:
++                    scale = p.abs().max()/127
++                    if scale > 0:
++                        p.copy_((p/scale).round().clamp(-127, 127)*scale)
++    else:
++        raise ValueError('Unknown modification')
++    save_model(output, model, arch)
++    return model
+diff --git a/traceability/integration.py b/traceability/integration.py
+new file mode 100644
+index 0000000..5af51de
+--- /dev/null
++++ b/traceability/integration.py
+@@ -0,0 +1,48 @@
++"""Export server-held data and recovered contribution keys after original Sanitizer training."""
++from pathlib import Path
++
++import torch
++from torch.utils.data import DataLoader
++
++from .common import data_bundle, save_private, save_model, save_json
++
++
++def export_dataset(dataset, path, role, indices=None, source='cifar10/train'):
++    images, labels = [], []
++    for x, y in DataLoader(dataset, batch_size=128, shuffle=False):
++        images.append(x.cpu())
++        labels.append(y.cpu())
++    if not images:
++        raise ValueError('Cannot export empty dataset')
++    save_private(path, data_bundle(torch.cat(images), torch.cat(labels), role,
++                                  indices=list(map(int, indices)) if indices is not None else [], source=source))
++
++
++def export_sanitizer(model, defense, validation, directory, targets, patterns, masks):
++    from identification.fine_tune import create_color_batch
++    root = Path(directory)
++    root.mkdir(parents=True, exist_ok=False, mode=0o700)
++    save_model(root / 'sanitized_base.pt', model, 'resnet18')
++    export_dataset(defense, root/'defense.pt', 'defense', defense.dataset.indices)
++    export_dataset(validation, root/'validation.pt', 'validation', validation.dataset.indices)
++    bank_patterns, bank_masks, xs, ys = [], [], [], []
++    for client, target in enumerate(targets):
++        if not 0 <= int(target) < 10:
++            raise ValueError('Invalid recovered target; do not export an incomplete Sanitizer run')
++        pattern = patterns[client][target].detach().cpu()
++        mask = masks[client][target].detach().cpu()
++        bank_patterns.append(pattern)
++        bank_masks.append(mask)
++        bg = create_color_batch(client, 1)
++        xs.append((1-mask)*bg + mask*pattern)
++        ys.append(int(target))
++    x, y = torch.cat(xs), torch.tensor(ys)
++    # Original contribution verification uses fixed secret backgrounds. These two files
++    # intentionally carry the same canonical keys; no independent-query claim is made.
++    save_private(root/'contribution_train.pt', data_bundle(x, y, 'contribution_train'))
++    save_private(root/'contribution_test.pt', data_bundle(x, y, 'contribution_test'))
++    save_private(root/'original_triggers.pt', dict(patterns=torch.stack(bank_patterns),
++                 masks=torch.stack(bank_masks), targets=torch.tensor(targets)))
++    save_json(root/'export_info.json', {'arch': 'resnet18', 'dataset': 'cifar10',
++              'note': 'SERVER ONLY. Export created AFTER harmless relearning. '
++                      'Contribution files are canonical fixed keys, not independent held-out variants.'})
+diff --git a/traceability/keys.py b/traceability/keys.py
+new file mode 100644
+index 0000000..158e035
+--- /dev/null
++++ b/traceability/keys.py
+@@ -0,0 +1,99 @@
++"""Private common probes and recipient codebook, separate from contribution keys."""
++import hashlib
++import secrets
++
++import torch
++
++from .common import normalize, load_tensors, save_private
++
++
++def _generator(secret, purpose):
++    digest = hashlib.sha256(f'{secret}:{purpose}'.encode()).digest()
++    return torch.Generator().manual_seed(int.from_bytes(digest[:8], 'big') % (2**63 - 1))
++
++
++def generate_key(recipients=10, bits=64, distance=20, seed=None, patch_size=4):
++    if not (2 <= recipients <= 1000 and 2 <= bits <= 4096 and 1 <= distance <= bits):
++        raise ValueError('Invalid recipient count, code length or minimum distance')
++    if not 1 <= patch_size <= 8:
++        raise ValueError('Patch size must be between 1 and 8')
++    secret = secrets.token_hex(32) if seed is None else f'research-seed-{seed}'
++    gen = _generator(secret, 'codebook')
++    codes = []
++    for _ in range(100000):
++        candidate = torch.randint(2, (bits,), generator=gen)
++        # Avoid low-entropy codewords; distinguish every recipient pair.
++        if not bits * .25 <= candidate.sum() <= bits * .75:
++            continue
++        if all((candidate != c).sum() >= distance for c in codes):
++            codes.append(candidate)
++            if len(codes) == recipients:
++                break
++    if len(codes) != recipients:
++        raise ValueError('Cannot construct this codebook; increase bits or reduce distance/recipients')
++    codes = torch.stack(codes)
++    # Permuting columns preserves distances; avoid common output-class shortcuts.
++    gen = _generator(secret, 'probes')
++    pairs = torch.stack([torch.randperm(10, generator=gen)[:2] for _ in range(bits)])
++    key = dict(version=1, secret=secret, codebook=codes, label_pairs=pairs,
++               recipient_ids=[f'client_{i:03d}' for i in range(recipients)],
++               backgrounds=.15 + .7 * torch.rand(bits, 3, 1, 1, generator=gen),
++               patches=torch.randint(2, (bits, 3, patch_size, patch_size), generator=gen).float(),
++               positions=torch.randint(1, 32-patch_size, (bits, 2), generator=gen),
++               min_distance=int(min((codes[i] != codes[j]).sum().item()
++                                    for i in range(recipients) for j in range(i))),
++               research_seed=seed)
++    key['key_id'] = hashlib.sha256(secret.encode()).hexdigest()[:24]
++    return key
++
++
++def write_key(path, **kwargs):
++    key = generate_key(**kwargs)
++    save_private(path, key)
++    return key
++
++
++def read_key(path):
++    key = load_tensors(path)
++    if key.get('version') != 1:
++        raise ValueError('Unsupported key format')
++    return key
++
++
++def overlay(images, key, bit_ids, shift=(0, 0), opacity=1.):
++    """Apply raw-RGB patches to normalized natural or artificial images."""
++    result = images.clone()
++    for row, bit in enumerate(bit_ids.tolist()):
++        patch = normalize(key['patches'][bit]).to(images.device)
++        size = patch.shape[-1]
++        top, left = key['positions'][bit].tolist()
++        top = max(0, min(32-size, top+shift[0]))
++        left = max(0, min(32-size, left+shift[1]))
++        region = result[row, :, top:top+size, left:left+size]
++        result[row, :, top:top+size, left:left+size] = (1-opacity)*region + opacity*patch
++    return result
++
++
++def queries(key, split='test', variants=4):
++    if split not in {'train', 'calibration', 'test'} or variants < 1:
++        raise ValueError('Invalid query split or variants')
++    bits = key['codebook'].shape[1]
++    images, bit_ids = [], []
++    for bit in range(bits):
++        for variant in range(variants):
++            gen = _generator(key['secret'], f'{split}/{bit}/{variant}')
++            color = key['backgrounds'][bit] + .04 * torch.randn(3, 1, 1, generator=gen)
++            raw = (color + .015 * torch.randn(3, 32, 32, generator=gen)).clamp(0, 1)
++            # Same pixels locally and over the PNG HTTP transport.
++            raw = raw.mul(255).round().div(255)
++            images.append(normalize(raw))
++            bit_ids.append(bit)
++    bit_ids = torch.tensor(bit_ids)
++    images = overlay(torch.stack(images), key, bit_ids)
++    digest = hashlib.sha256(images.numpy().tobytes()).hexdigest()
++    return images, bit_ids, digest
++
++
++def expected(key, recipient, bit_ids):
++    codes = key['codebook'][recipient, bit_ids]
++    return key['label_pairs'][bit_ids, codes]
+diff --git a/traceability/training.py b/traceability/training.py
+new file mode 100644
+index 0000000..7f657ab
+--- /dev/null
++++ b/traceability/training.py
+@@ -0,0 +1,168 @@
++"""Independent post-Sanitizer copies; baseline D and optional one-step robustness E."""
++import copy
++import time
++from dataclasses import asdict, dataclass
++from pathlib import Path
++
++import torch
++from torch import nn
++from torch.nn import functional as F
++from torch.func import functional_call
++from torch.utils.data import DataLoader
++
++from .common import load_data, load_model, predict, save_json, save_model, seed_all, sha256
++from .keys import expected, overlay, queries
++
++
++@dataclass
++class EmbedConfig:
++    epochs: int = 10
++    batch_size: int = 64
++    lr: float = .001
++    task_weight: float = 1.
++    fingerprint_weight: float = 1.
++    safety_weight: float = 1.
++    contribution_weight: float = 0.
++    robust_weight: float = 0.
++    inner_lr: float = .001
++    robust_every: int = 5
++    train_variants: int = 16
++    validation_variants: int = 4
++    max_accuracy_drop: float = .02
++    seed: int = 1
++    max_steps: int = 0
++
++    def validate(self):
++        if min(self.epochs, self.batch_size, self.robust_every, self.train_variants,
++               self.validation_variants) < 1 or self.lr <= 0 or self.inner_lr <= 0:
++            raise ValueError('Training counts and learning rates must be positive')
++        if min(self.task_weight, self.fingerprint_weight, self.safety_weight,
++               self.contribution_weight, self.robust_weight) < 0:
++            raise ValueError('Loss weights must be nonnegative')
++        if not 0 <= self.max_accuracy_drop <= 1 or self.max_steps < 0:
++            raise ValueError('Invalid accuracy constraint or max_steps')
++
++
++def freeze_bn(model):
++    # Keep deployment running statistics; artificial batches must not dominate them.
++    for module in model.modules():
++        if isinstance(module, nn.modules.batchnorm._BatchNorm):
++            module.eval()
++
++
++def one_step_robust_loss(model, x, y, probes, labels, inner_lr):
++    """Differentiable look-ahead through ONE clean SGD step (not general attack immunity)."""
++    params = dict(model.named_parameters())
++    buffers = {k: v.detach().clone() for k, v in model.named_buffers()}
++    clean_loss = F.cross_entropy(functional_call(model, (params, buffers), (x,)), y)
++    grads = torch.autograd.grad(clean_loss, tuple(params.values()), create_graph=True)
++    updated = {name: value-inner_lr*grad for (name, value), grad in zip(params.items(), grads)}
++    return F.cross_entropy(functional_call(model, (updated, buffers), (probes,)), labels)
++
++
++def personalize(base_path, key, defense_path, validation_path, out_dir, config,
++                arch='resnet18', device='cpu', contribution_path=None, selected=None):
++    config.validate()
++    defense, defense_meta = load_data(defense_path, 'defense')
++    validation, validation_meta = load_data(validation_path, 'validation')
++    if sha256(defense_path) == sha256(validation_path):
++        raise ValueError('Defense and validation files must differ')
++    # Check sample IDs where provided, even if someone relabels the data role.
++    if (defense_meta.get('source') == validation_meta.get('source') and
++            set(defense_meta.get('indices', [])).intersection(validation_meta.get('indices', []))):
++        raise ValueError('Defense/validation sample overlap')
++    contribution = None
++    if config.contribution_weight:
++        if not contribution_path:
++            raise ValueError('Contribution loss requires --contribution-data')
++        contribution, _ = load_data(contribution_path, 'contribution_train')
++    out = Path(out_dir)
++    if out.exists() and any(out.iterdir()):
++        raise ValueError('Output directory must be empty; do not overwrite a distribution record')
++    out.mkdir(parents=True, exist_ok=True)
++    base = load_model(base_path, arch, device)
++    val_x, val_y = validation.tensors
++    base_accuracy = (predict(base, val_x, config.batch_size, device) == val_y).float().mean().item()
++    train_q, train_bits, _ = queries(key, 'train', config.train_variants)
++    val_q, val_bits, _ = queries(key, 'calibration', config.validation_variants)
++    recipients = list(range(len(key['recipient_ids']))) if selected is None else selected
++    if not recipients or len(set(recipients)) != len(recipients) or any(
++            i < 0 or i >= len(key['recipient_ids']) for i in recipients):
++        raise ValueError('Invalid recipient selection')
++    registry = dict(key_id=key['key_id'], base_sha256=sha256(base_path), arch=arch,
++                    config=asdict(config), defense_sha256=sha256(defense_path),
++                    validation_sha256=sha256(validation_path), base_validation_accuracy=base_accuracy,
++                    records=[])
++    for recipient in recipients:
++        seed_all(config.seed)  # Same optimization randomness, different identity targets.
++        model = copy.deepcopy(base)  # NEVER start from the preceding recipient.
++        optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=.9, weight_decay=5e-4)
++        loader = DataLoader(defense, batch_size=config.batch_size, shuffle=True, num_workers=0)
++        fp_labels = expected(key, recipient, train_bits)
++        val_labels = expected(key, recipient, val_bits)
++        best_score, best_state, best_epoch = -1., None, None
++        history, step, started = [], 0, time.perf_counter()
++        for epoch in range(config.epochs):
++            model.train()
++            freeze_bn(model)
++            sums = {name: 0. for name in ['task', 'fingerprint', 'safety', 'contribution', 'robust']}
++            count = 0
++            for x, y in loader:
++                x, y = x.to(device), y.to(device)
++                indices = torch.randint(len(train_q), (len(x),))
++                q, target = train_q[indices].to(device), fp_labels[indices].to(device)
++                losses = {'task': F.cross_entropy(model(x), y),
++                          'fingerprint': F.cross_entropy(model(q), target)}
++                if config.safety_weight:
++                    bit_ids = torch.randint(key['codebook'].shape[1], (len(x),))
++                    # Nominal + small translations/opacity changes; evaluate others independently.
++                    shift = tuple(torch.randint(-1, 2, (2,)).tolist())
++                    opacity = .7 + .3 * torch.rand(()).item()
++                    safe = overlay(x, key, bit_ids, shift, opacity)
++                    losses['safety'] = F.cross_entropy(model(safe), y)
++                if contribution is not None:
++                    ix = torch.randint(len(contribution), (len(x),))
++                    cx, cy = contribution.tensors
++                    losses['contribution'] = F.cross_entropy(model(cx[ix].to(device)), cy[ix].to(device))
++                if config.robust_weight and step % config.robust_every == 0:
++                    losses['robust'] = one_step_robust_loss(model, x, y, q, target, config.inner_lr)
++                total = sum(getattr(config, f'{name}_weight') * loss for name, loss in losses.items())
++                optimizer.zero_grad(set_to_none=True)
++                total.backward()
++                nn.utils.clip_grad_norm_(model.parameters(), 10.)
++                optimizer.step()
++                for name, loss in losses.items():
++                    sums[name] += loss.item()
++                count += 1
++                step += 1
++                if config.max_steps and step >= config.max_steps:
++                    break
++            accuracy = (predict(model, val_x, config.batch_size, device) == val_y).float().mean().item()
++            score = (predict(model, val_q, config.batch_size, device) == val_labels).float().mean().item()
++            feasible = accuracy >= base_accuracy-config.max_accuracy_drop
++            if feasible and score > best_score:
++                best_score, best_epoch = score, epoch+1
++                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
++            row = dict(epoch=epoch+1, validation_accuracy=accuracy, validation_fingerprint=score,
++                       accuracy_constraint_passed=feasible, **{k: v/count for k, v in sums.items()})
++            history.append(row)
++            print(f'{key["recipient_ids"][recipient]} epoch {epoch+1}: acc={accuracy:.4f}, fp={score:.4f}', flush=True)
++            if config.max_steps and step >= config.max_steps:
++                break
++        private = out / 'server_private'
++        private.mkdir(exist_ok=True, mode=0o700)
++        save_json(private / f'{recipient:03d}_training.json', history)
++        if best_state is None:
++            raise RuntimeError(f'No accuracy-feasible checkpoint for recipient {recipient}; inspect validation logs')
++        model.load_state_dict(best_state)
++        rel = f'distribution/copy_{recipient:03d}/model.pt'
++        save_model(out / rel, model, arch)
++        registry['records'].append(dict(name=f'copy_{recipient:03d}', path='../'+rel,
++                                       recipient=recipient, sha256=sha256(out / rel),
++                                       selected_epoch=best_epoch, validation_fingerprint=best_score,
++                                       seconds=time.perf_counter()-started))
++        save_json(private / 'registry.json', registry)
++        # This is a template; user must add independently trained unknown controls.
++        save_json(private / 'manifest.json', {'records': [
++            {k: r[k] for k in ['name', 'path', 'recipient']} for r in registry['records']]})
++    return registry
+diff --git a/traceability/verification.py b/traceability/verification.py
+new file mode 100644
+index 0000000..d5d4c1d
+--- /dev/null
++++ b/traceability/verification.py
+@@ -0,0 +1,175 @@
++"""Label-only decoder, model-level calibration and optional PNG-over-HTTP queries."""
++import base64
++import io
++import json
++import math
++import urllib.request
++from pathlib import Path
++
++import numpy as np
++from PIL import Image
++import torch
++
++from .common import denormalize, load_model, predict, read_json, save_json, sha256
++from .keys import expected, queries
++
++
++def validate_labels(labels, count):
++    labels = torch.as_tensor(labels)
++    if labels.shape != (count,) or labels.dtype == torch.bool or labels.is_floating_point():
++        raise ValueError('Response must contain exactly N integer top-1 labels')
++    if labels.numel() and (labels.min() < 0 or labels.max() >= 10):
++        raise ValueError('Response labels must use the original CIFAR-10 indices 0..9')
++    return labels.long()
++
++
++def scores_for_labels(key, labels, bit_ids):
++    labels = validate_labels(labels, len(bit_ids))
++    return [(labels == expected(key, i, bit_ids)).double().mean().item()
++            for i in range(len(key['recipient_ids']))]
++
++
++def decide(scores, tau, delta):
++    s = np.asarray(scores, dtype=float)
++    if s.ndim != 1 or len(s) < 2 or not np.isfinite(s).all() or np.any((s < 0) | (s > 1)):
++        raise ValueError('Expected at least two finite scores in [0,1]')
++    if not (math.isfinite(tau) and 0 <= tau <= 1.000001 and math.isfinite(delta) and 0 < delta <= 1.000001):
++        raise ValueError('Invalid calibrated thresholds')
++    order = np.argsort(-s, kind='stable')
++    first, second = order[:2]
++    margin = float(s[first]-s[second])
++    accepted = bool(s[first] >= tau and margin >= delta and margin > 0)
++    return dict(status='attributed' if accepted else 'unattributable',
++                recipient=int(first) if accepted else None,
++                top_score=float(s[first]), margin=margin, scores=s.tolist())
++
++
++def load_manifest(path, key):
++    records = read_json(path)['records']
++    if not records or len({r['name'] for r in records}) != len(records):
++        raise ValueError('Manifest requires nonempty uniquely named records')
++    for r in records:
++        identity = r['recipient']
++        if identity is not None and (type(identity) is not int or not 0 <= identity < len(key['recipient_ids'])):
++            raise ValueError('recipient must be a zero-based identity or null for an unknown model')
++        r['path'] = str((Path(path).resolve().parent / r['path']).resolve())
++    hashes = [sha256(r['path']) for r in records]
++    if len(set(hashes)) != len(hashes):
++        raise ValueError('Duplicate checkpoint bytes in manifest; do not inflate model counts')
++    return records
++
++
++def score_manifest(path, key, split, variants, arch='resnet18', device='cpu', batch_size=64):
++    images, bits, digest = queries(key, split, variants)
++    rows = []
++    for r in load_manifest(path, key):
++        model = load_model(r['path'], arch, device)
++        labels = predict(model, images, batch_size, device)
++        rows.append(dict(name=r['name'], recipient=r['recipient'], sha256=sha256(r['path']),
++                         scores=scores_for_labels(key, labels, bits)))
++        del model
++    return dict(key_id=key['key_id'], split=split, variants=variants, query_sha256=digest, rows=rows)
++
++
++def outcome_counts(rows, tau, delta):
++    counts = dict(known=0, unknown=0, correct=0, wrong_known=0, rejected_known=0,
++                  false_attributed_unknown=0, rejected_unknown=0)
++    for row in rows:
++        found = decide(row['scores'], tau, delta)['recipient']
++        truth = row['recipient']
++        if truth is None:
++            counts['unknown'] += 1
++            counts['rejected_unknown' if found is None else 'false_attributed_unknown'] += 1
++        else:
++            counts['known'] += 1
++            counts['correct' if found == truth else ('rejected_known' if found is None else 'wrong_known')] += 1
++    return counts
++
++
++def calibrate(report, key, max_false_rate=.01, min_recall=.8):
++    if report['split'] != 'calibration' or report['key_id'] != key['key_id']:
++        raise ValueError('Thresholds must use this key and calibration queries')
++    if not 0 <= max_false_rate <= 1 or not 0 <= min_recall <= 1:
++        raise ValueError('Rates must be in [0,1]')
++    rows = report['rows']
++    known = [r for r in rows if r['recipient'] is not None]
++    unknown = [r for r in rows if r['recipient'] is None]
++    if not unknown or {r['recipient'] for r in known} != set(range(len(key['recipient_ids']))):
++        raise ValueError('Calibration requires every enrolled identity and at least one unknown control')
++    # Decisions change only at observed score/margin boundaries. Include rejection thresholds.
++    tops = [max(r['scores']) for r in rows]
++    margins = [sorted(r['scores'], reverse=True)[0]-sorted(r['scores'], reverse=True)[1] for r in rows]
++    taus = sorted({0., 1.0000001, *tops, *(float(np.nextafter(x, np.inf)) for x in tops)})
++    deltas = sorted({1e-9, 1.0000001, *(max(1e-9, x) for x in margins),
++                     *(max(1e-9, float(np.nextafter(x, np.inf))) for x in margins)})
++    best = None
++    # Vectorized candidate testing over whole models; variants are NOT independent negatives.
++    matrix = np.asarray([r['scores'] for r in rows])
++    predicted = matrix.argmax(1)
++    top = matrix.max(1)
++    gap = np.sort(matrix, axis=1)[:, -1] - np.sort(matrix, axis=1)[:, -2]
++    truth = np.asarray([-1 if r['recipient'] is None else r['recipient'] for r in rows])
++    is_known = truth >= 0
++    for tau in taus:
++        for delta in deltas:
++            accepted = (top >= tau) & (gap >= delta) & (gap > 0)
++            false_unknown = np.count_nonzero(accepted & ~is_known) / len(unknown)
++            wrong_known = np.count_nonzero(accepted & is_known & (predicted != truth)) / len(known)
++            correct = np.count_nonzero(accepted & is_known & (predicted == truth))
++            if false_unknown <= max_false_rate and wrong_known <= max_false_rate:
++                rank = (correct, -false_unknown, -wrong_known, tau, delta)
++                if best is None or rank > best[0]:
++                    best = (rank, tau, delta)
++    if best is None or best[0][0] / len(known) < min_recall:
++        raise ValueError('No thresholds meet empirical false-attribution and recall constraints; improve embedding')
++    _, tau, delta = best
++    counts = outcome_counts(rows, tau, delta)
++    return dict(version=1, key_id=key['key_id'], tau=tau, delta=delta,
++                variants=report['variants'], query_sha256=report['query_sha256'],
++                calibration_counts=counts, max_empirical_false_rate=max_false_rate,
++                calibration_unknown_hashes=[r['sha256'] for r in unknown],
++                note='Empirical calibration only. Threshold selection invalidates a formal held-out bound. '
++                     'Validate on independent unknown models; queries/variants are correlated.')
++
++
++def read_thresholds(path, key, variants):
++    obj = read_json(path)
++    if obj.get('version') != 1 or obj['key_id'] != key['key_id'] or obj['variants'] != variants:
++        raise ValueError('Threshold key/version/query-budget mismatch')
++    decide([0.] * len(key['recipient_ids']), obj['tau'], obj['delta'])
++    return obj
++
++
++def png_bytes(image):
++    raw = denormalize(image).clamp(0, 1).mul(255).round().byte().permute(1, 2, 0).numpy()
++    buffer = io.BytesIO()
++    Image.fromarray(raw).save(buffer, format='PNG')
++    return buffer.getvalue()
++
++
++def http_labels(endpoint, images, batch_size=64, timeout=30, token=None):
++    if not endpoint.startswith(('http://', 'https://')):
++        raise ValueError('Endpoint must be HTTP(S)')
++    labels = []
++    for batch in images.split(batch_size):
++        body = json.dumps({'images': [base64.b64encode(png_bytes(x)).decode('ascii') for x in batch]}).encode()
++        headers = {'Content-Type': 'application/json'}
++        if token:
++            headers['Authorization'] = f'Bearer {token}'
++        request = urllib.request.Request(endpoint, data=body, headers=headers, method='POST')
++        with urllib.request.urlopen(request, timeout=timeout) as response:
++            payload = json.load(response)
++        labels.extend(validate_labels(payload['labels'], len(batch)).tolist())
++    return torch.tensor(labels, dtype=torch.long)
++
++
++def export_queries(key, output_dir, variants=4):
++    output = Path(output_dir)
++    output.mkdir(parents=True, exist_ok=False, mode=0o700)
++    images, bits, digest = queries(key, 'test', variants)
++    names = [f'query_{i:05d}.png' for i in range(len(images))]
++    for name, image in zip(names, images):
++        (output / name).write_bytes(png_bytes(image))
++    save_json(output / 'request_manifest.json', dict(key_id=key['key_id'], split='test',
++              variants=variants, query_sha256=digest, files=names))
++    return dict(count=len(images), query_sha256=digest)
+diff --git a/utils/options.py b/utils/options.py
+index f7dd51d..fb72cc1 100644
+--- a/utils/options.py
++++ b/utils/options.py
+@@ -74,8 +74,10 @@ def args_parser():
+                         default="{0: True, 1: True, 2: True, 3: True, 4: True, 5: True, 6: True, 7: True, 8: True, "
+                                 "9: True}",
+                         help='Dictionary for watermark booleans, e.g. "{0: True, 1: True}"')
+-    parser.add_argument('--relearn_eps', type=float, default=50, help='unharmful relearning eps')
+-    parser.add_argument('--relearn_bs', type=float, default=32, help='unharmful relearning bs')
++    parser.add_argument('--relearn_eps', type=int, default=50, help='unharmful relearning eps')
++    parser.add_argument('--relearn_bs', type=int, default=32, help='unharmful relearning bs')
+     parser.add_argument('--relearn_lr', type=float, default=0.005, help='unharmful relearning lr')
++    parser.add_argument('--trace_export_dir', type=str, default=None,
++                        help='New server-only directory for final CIFAR10/ResNet18 model, reserved data and contribution keys')
+     args = parser.parse_args()
+     return args
+diff --git a/utils/showpicture.py b/utils/showpicture.py
+index a8d7960..1dbb476 100644
+--- a/utils/showpicture.py
++++ b/utils/showpicture.py
+@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader, Dataset
+ 
+ import torch.nn as nn
+ import torch.nn.functional as F
+-matplotlib.use('TkAgg')
++matplotlib.use('Agg')  # Training and server-side exports must work without a desktop.
+ import matplotlib.pyplot as plt
+ import numpy as np
+ from torchvision import datasets, transforms
+@@ -12,9 +12,6 @@ from PIL import Image, ImageDraw
+ import torch
+ import os
+ 
+-from cleverhans.torch.attacks.projected_gradient_descent import (
+-    projected_gradient_descent,
+-)
+ 
+ class pgdNet(nn.Module):
+     """Basic CNN architecture for CIFAR10."""
+@@ -164,6 +161,8 @@ def add_backdoor_trigger_adversarial_samples(x, target_label=0, targeted=False):
+     :param target_label: Target label when the backdoor is triggered
+     :return: Image with the backdoor and the target label
+     """
++    # Optional dependency only needed for the upstream adv_samples experiment.
++    from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
+     net = pgdNet()
+     net.train()
+     if targeted:

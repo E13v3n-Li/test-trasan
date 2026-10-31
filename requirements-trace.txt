@@ -1,0 +1,5 @@
+# Install a matched torch/torchvision pair for your CPU or CUDA first (see TRACEABILITY_ZH.md).
+numpy>=1.26,<2
+Pillow>=10,<12
+# Optional test dependency:
+pytest>=8,<9
